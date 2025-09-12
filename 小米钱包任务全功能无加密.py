@@ -396,7 +396,7 @@ def get_xiaomi_cookies(pass_token, user_id):
     login_url = 'https://account.xiaomi.com/pass/serviceLogin?callback=https%3A%2F%2Fapi.jr.airstarfinance.net%2Fsts%3Fsign%3D1dbHuyAmee0NAZ2xsRw5vhdVQQ8%253D%26followup%3Dhttps%253A%252F%252Fm.jr.airstarfinance.net%252Fmp%252Fapi%252Flogin%253Ffrom%253Dmipay_indexicon_TVcard%2526deepLinkEnable%253Dfalse%2526requestUrl%253Dhttps%25253A%25252F%25252Fm.jr.airstarfinance.net%25252Fmp%25252Factivity%25252FvideoActivity%25253Ffrom%25253Dmipay_indexicon_TVcard%252526_noDarkMode%25253Dtrue%252526_transparentNaviBar%25253Dtrue%252526cUserId%25253Dusyxgr5xjumiQLUoAKTOgvi858Q%252526_statusBarHeight%25253D137&sid=jrairstar&_group=DEFAULT&_snsNone=true&_loginType=ticket'
     headers = {
         'user-agent': 'Mozilla/5.0 (Linux; U; Android 14; zh-CN; M2012K11AC Build/UKQ1.230804.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/100.0.4896.127 Mobile Safari/537.36 XiaoMi/MiuiBrowser/4.3',
-        'cookie': f'passToken={serviceToken=s/gBP4Esa/B4bpp3MP5q9KWrg1aIkob+/e32875fSqNxX2VafZQqMzZhlK3A4TqT+ckrn+pfr1xOhtHLhaak8+sz+BLkOyY/YuO8ryHbcSyH21KPwMVGE5la50bnJojLs5sfNJlopnwoUzDCNX1IZB8ctbV4IrDe+8GU0kMuGVw8e1g9aD2HW8Kei8lGeHu/U3Ly6x0sc/e8eVhWBNVSAdjp6kvTBenII+zCrdWUt3GUJ7WoNthGm2KWdhLJXNcZ}; userId={userId=2398839079};'
+        'cookie': f'passToken={pass_token}; userId={user_id};'
     }
     try:
         session = requests.Session()
