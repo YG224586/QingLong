@@ -1,5 +1,3 @@
-
-
 #!/usr/bin/env python3
 
 import subprocess
@@ -240,4 +238,13 @@ if qywx_key:
     print(f"已配置企业微信推送")
 
 if wxpusher_token:
-    env["WXPUSHER_TOKEN"]
+    env["WXPUSHER_TOKEN"] = wxpusher_token
+    print(f"已配置WxPusher推送")
+
+print(f"正在运行 {executable}...")
+result = subprocess.run([executable], env=env)
+
+if result.returncode == 0:
+    print("Success!")
+else:
+    print(f"Failed code: {result.returncode}")
