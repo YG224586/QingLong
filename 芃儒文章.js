@@ -103,7 +103,7 @@ const name = '微信小程序芃儒文章'
                     "sec-fetch-mode": "cors",
                     "sec-fetch-site": "cross-site",
                     "xweb_xhr": "1",
-                    "referrer": "https://servicewechat.com/wxd03a809cfc99930b/4/page-frame.html",
+                    "referrer": "https://servicewechat.com/wxd03a809cfc99930b/4/page-frame.html"，
                     "referrerPolicy": "unsafe-url",
                 }
 
@@ -473,5 +473,6 @@ const name = '微信小程序芃儒文章'
     } catch (e) {
         console.error('❌ 执行过程中发生异常:', e.message);
     }
+
 
 })();
