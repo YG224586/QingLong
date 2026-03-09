@@ -1,198 +1,209 @@
+'''
+new Env('MT论坛签到-简化版')
+简化版保留核心功能，优化请求逻辑
+cron: 0 8 * * *
+'''
 import requests
 import re
-import os
-from notify import send  # 青龙通知模块，如果不需要推送功能，可以注释或删除此行
+import time
+import random
+from datetime import datetime
+from notify import send
 
-# 设置代理（如果不需要代理，可以直接删除此部分）
-proxies = {
-    "http": "http://180.101.50.249:443",
-    "https": "http://180.101.50.249:443",
-}
+class MTBBS:
+    def __init__(self):
+        self.session = requests.Session()
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 15; RMX3852 Build/UKQ1.231108.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.208 Mobile Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9',
+            'Connection': 'keep-alive',
+        }
+        self.username = "账号"
+        self.password = "密码"
 
-# 基本 URL 和请求头
-bbs_url = "https://bbs.binmt.cc/member.php"
-credit_url = "https://bbs.binmt.cc/home.php?mod=spacecp&ac=credit"
-credit_log_url = "https://bbs.binmt.cc/home.php"  # 积分收益记录页面
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.50'
-}
+    def safe_request(self, url, method='GET', data=None, retry=2):
+        """安全请求函数"""
+        for attempt in range(retry):
+            try:
+                headers = self.headers.copy()
+                if method.upper() == 'GET':
+                    response = self.session.get(url, headers=headers, timeout=15)
+                else:
+                    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                    response = self.session.post(url, data=data, headers=headers, timeout=15)
+                
+                if response.status_code == 200:
+                    return response
+                elif response.status_code == 302:
+                    return response
+                else:
+                    print(f"请求失败，状态码: {response.status_code}")
+            except Exception as e:
+                print(f"请求异常: {str(e)}")
+            
+            if attempt < retry - 1:
+                time.sleep(random.uniform(2, 4))
+        
+        return None
 
-credit_headers = {
-    'User-Agent': 'Mozilla/5.0 (Linux; U; Android 14; zh-cn; 22127RK46C Build/UKQ1.230804.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/109.0.5414.118 Mobile Safari/537.36 XiaoMi/MiuiBrowser/18.2.150419',
-}
-
-
-# 功能：获取登录页面中的 loginhash 和 formhash
-def getLoginHashes(session):
-    params = {
-        'mod': 'logging',
-        'action': 'login'
-    }
-    login_res = session.get(url=bbs_url, headers=headers, params=params, proxies=proxies)
-    try:
-        loginhash = re.search(r'loginhash=(.+?)"', login_res.text).group(1)
-    except:
-        print("获取 loginhash 失败，退出")
-        return False
-    try:
-        formhash = re.search(r'name="formhash" value="(.+?)"', login_res.text).group(1)
-    except:
-        print("获取 formhash 失败，退出")
-        return False
-    return loginhash, formhash
-
-
-# 功能：登录账号
-def login(session, loginhash, formhash, username, password, loginfield="username"):
-    params = {
-        'mod': 'logging',
-        'action': 'login',
-        'loginsubmit': 'yes',
-        'loginhash': loginhash,
-        'inajax': '1'
-    }
-    data = {
-        'formhash': formhash,
-        'loginfield': loginfield,
-        'username': username,
-        'password': password,
-        'questionid': '0',
-        'answer': ''
-    }
-    res = session.post(url=bbs_url, headers=headers, params=params, data=data, proxies=proxies)
-    if '欢迎您回来' in res.text or "手机号登录成功" in res.text:
-        return True
-    else:
-        print("登录失败\n", res.text)
-        return False
-
-
-# 功能：签到
-def checkin(session):
-    checkin_res = session.get(url='https://bbs.binmt.cc/k_misign-sign.html', headers=headers, proxies=proxies)
-    try:
-        checkin_formhash = re.search('name="formhash" value="(.+?)"', checkin_res.text).group(1)
-    except:
-        return "签到 formhash 查找失败，退出"
-    res = session.get(
-        f'https://bbs.binmt.cc/plugin.php?id=k_misign%3Asign&operation=qiandao&format=empty&formhash={checkin_formhash}',
-        headers=headers,
-        proxies=proxies
-    )
-    if "![CDATA[]]" in res.text:
-        return '🎉 签到成功'
-    elif "今日已签" in res.text:
-        return '🐔 今日已签'
-    else:
-        print("签到失败\n", res.text)
-        return '签到失败'
-
-
-# 功能：格式化签到信息
-def checkinfo(session):
-    res = session.get(url='https://bbs.binmt.cc/k_misign-sign.html', headers=headers, proxies=proxies)
-    try:
-        user = re.search('class="author">(.+?)</a>', res.text).group(1)
-        lxdays = re.search('id="lxdays" value="(.+?)"', res.text).group(1)
-        lxlevel = re.search('id="lxlevel" value="(.+?)"', res.text).group(1)
-        lxreward = re.search('id="lxreward" value="(.+?)"', res.text).group(1)
-        lxtdays = re.search('id="lxtdays" value="(.+?)"', res.text).group(1)
-        paiming = re.search('您的签到排名：(.+?)<', res.text).group(1)
-        msg = (
-            f"┌─【MT论坛账号】\n"
-            f"├ 用户名：{user}\n"
-            f"├ 连续签到：{lxdays} 天\n"
-            f"├ 签到等级：Lv.{lxlevel}\n"
-            f"├ 积分奖励：{lxreward}\n"
-            f"├ 签到天数：{lxtdays} 天\n"
-            f"└ 签到排名：{paiming}\n"
-        )
-    except Exception as e:
-        msg = f"获取用户信息失败: {e}"
-    return msg
-
-
-# 功能：积分收益记录
-def getCreditLogs(session):
-    params = {
-        'mod': 'spacecp',
-        'ac': 'credit',
-        'op': 'log',
-        'km': '1'
-    }
-    res = session.get(url=credit_log_url, headers=credit_headers, params=params, proxies=proxies)
-    try:
-        pattern = re.compile(
-            r'<div class="cre_mun.*?">金币.*?<span.*?>(.*?)</span>.*?</div>.*?<h2><span.*?>(.*?)</span>.*?<span.*?>(.*?)</span>',
-            re.S
-        )
-        logs = pattern.findall(res.text)
-        if logs:
-            msg = "【积分收益记录】\n"
-            msg += "┌─ 最新 5 条记录\n"
-            for i, log in enumerate(logs[:5], 1):  # 提取最近 5 条记录
-                amount = log[0]
-                timestamp = log[1]
-                description = log[2]
-                msg += f"├ {i}. 时间：{timestamp}\n"
-                msg += f"│    金币：{amount}\n"
-                msg += f"│    原因：{description}\n"
-            msg += "└───────────────\n"
+    def login(self):
+        """登录功能"""
+        print("正在登录...")
+        
+        # 获取登录页面
+        login_url = "https://bbs.binmt.cc/member.php?mod=logging&action=login"
+        login_resp = self.safe_request(login_url)
+        if not login_resp:
+            return False, "登录页面获取失败"
+        
+        # 提取登录参数
+        html = login_resp.text
+        formhash_match = re.search(r'name="formhash"[^>]*value=[\'"]([^\'"]*)[\'"]', html)
+        referer_match = re.search(r'name="referer"[^>]*value="([^"]*)"', html)
+        
+        if not formhash_match:
+            return False, "formhash提取失败"
+        
+        formhash = formhash_match.group(1)
+        referer = referer_match.group(1) if referer_match else "https://bbs.binmt.cc/forum.php"
+        
+        # 构造登录数据
+        login_data = {
+            'formhash': formhash,
+            'referer': referer,
+            'username': self.username,
+            'password': self.password,
+            'loginsubmit': 'true'
+        }
+        
+        # 提交登录
+        login_post_url = "https://bbs.binmt.cc/member.php?mod=logging&action=login&loginsubmit=yes&inajax=1"
+        login_result = self.safe_request(login_post_url, 'POST', login_data)
+        
+        if not login_result:
+            return False, "登录请求失败"
+        
+        # 检查登录结果
+        if '登录成功' in login_result.text or 'window.location.href' in login_result.text:
+            return True, "登录成功"
+        elif '密码错误' in login_result.text:
+            return False, "账号或密码错误"
         else:
-            msg = "未找到积分收益记录\n"
-    except Exception as e:
-        msg = f"获取积分收益记录失败: {e}\n"
-    return msg
+            return False, "登录失败"
 
+    def sign_in(self):
+        """签到功能"""
+        print("正在签到...")
+        
+        # 访问签到页面
+        sign_url = "https://bbs.binmt.cc/k_misign-sign.html"
+        sign_resp = self.safe_request(sign_url)
+        if not sign_resp:
+            return "签到页面访问失败"
+        
+        # 提取formhash
+        formhash_match = re.search(r'formhash=([a-f0-9]+)', sign_resp.text)
+        if not formhash_match:
+            return "formhash提取失败"
+        
+        formhash = formhash_match.group(1)
+        
+        # 执行签到
+        sign_post_url = f"https://bbs.binmt.cc/plugin.php?id=k_misign:sign&operation=qiandao&format=text&formhash={formhash}"
+        sign_result = self.safe_request(sign_post_url)
+        
+        if not sign_result:
+            return "签到请求失败"
+        
+        result_text = sign_result.text.strip()
+        
+        if "今日已签" in result_text:
+            return "今日已完成签到"
+        elif "签到成功" in result_text:
+            # 提取奖励信息
+            reward_match = re.search(r'获得奖励\s*(\S+)', result_text)
+            reward = reward_match.group(1) if reward_match else "未知奖励"
+            return f"签到成功！获得：{reward}"
+        else:
+            return f"签到异常：{result_text[:30]}"
 
-# 功能：处理多个账户
-def process_accounts(accounts_env):
-    accounts = accounts_env.split('&')
-    all_msgs = []
-    for account in accounts:
-        if not account.strip():
-            continue
-        try:
-            config = account.split(';')
-            if len(config) != 2:
-                print(f"账号配置不完整: {account}")
-                continue
-            username = config[0]
-            password = config[1]
-            session = requests.session()
-            hashes = getLoginHashes(session)
-            if hashes is False:
-                msg = f"【{username}】获取 loginhash 或 formhash 失败\n"
-            else:
-                if "@" in username:
-                    loginfield = "email"
-                else:
-                    loginfield = "username"
-                if login(session, hashes[0], hashes[1], username, password, loginfield) is False:
-                    msg = f"【{username}】账号登录失败\n"
-                else:
-                    login_msg = f"【{username}】登录成功\n"
-                    c = checkin(session)
-                    info = checkinfo(session)
-                    credits = getCreditLogs(session)
-                    msg = f"{login_msg}\n{info}{c}{credits}"
-            all_msgs.append(msg)
-        except Exception as e:
-            print(f"处理账号 {account} 时出错: {e}")
-            all_msgs.append(f"处理账号 {account} 时出错: {e}")
-    return all_msgs
+    def get_credit(self):
+        """获取积分信息"""
+        credit_url = "https://bbs.binmt.cc/home.php?mod=spacecp&ac=credit"
+        credit_resp = self.safe_request(credit_url)
+        
+        if not credit_resp:
+            return "积分信息获取失败"
+        
+        info = []
+        patterns = [
+            (r'金币:\s*</span>(\d+)\s*&nbsp;', '金币'),
+            (r'威望:\s*</span>(\d+)', '威望'),
+            (r'热心:\s*</span>(\d+)', '热心'),
+        ]
+        
+        for pattern, name in patterns:
+            match = re.search(pattern, credit_resp.text)
+            if match:
+                info.append(f"{name}:{match.group(1)}")
+        
+        return " | ".join(info) if info else "积分数据提取失败"
 
+    def run(self):
+        """主运行流程"""
+        print("=" * 30)
+        print("MT论坛签到开始")
+        print(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 30)
+        
+        # 随机延迟
+        time.sleep(random.uniform(1, 3))
+        
+        # 登录
+        login_ok, login_msg = self.login()
+        if not login_ok:
+            result = f"❌ 登录失败: {login_msg}"
+            print(result)
+            return result
+        
+        print("✅ 登录成功")
+        time.sleep(1)
+        
+        # 签到
+        sign_msg = self.sign_in()
+        print(f"签到结果: {sign_msg}")
+        
+        # 获取积分
+        credit_info = self.get_credit()
+        print(f"账户信息: {credit_info}")
+        
+        # 构造结果
+        result = (
+            f"【MT论坛签到结果】\n"
+            f"账号: {self.username}\n"
+            f"签到: {sign_msg}\n"
+            f"账户: {credit_info}\n"
+            f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        
+        return result
 
-# 主函数
 if __name__ == "__main__":
-    if 'MT_BBS' in os.environ:
-        mt_bbs_value = os.environ['MT_BBS']  # 青龙面板中的环境变量，格式：username1;password1&username2;password2
-        print("### MT论坛签到 ###")
-        result = process_accounts(mt_bbs_value)
-        if result:
-            # 推送通知
-            send('MT论坛签到', '\n————————————\n'.join(result))
-        else:
-            print('没有找到有效的账号信息，退出')
-    else:
-        print('未找到 MT_BBS 环境变量，退出')
+    try:
+        mt = MTBBS()
+        result = mt.run()
+        
+        print("\n" + "=" * 30)
+        print("最终结果:")
+        print(result)
+        print("=" * 30)
+        
+        # 发送通知
+        send('MT论坛签到', result)
+        print("通知发送成功")
+        
+    except Exception as e:
+        error_msg = f"MT论坛签到异常: {str(e)}"
+        print(error_msg)
+        send('MT论坛签到异常', error_msg)
