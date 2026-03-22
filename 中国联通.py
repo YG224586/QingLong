@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-中国联通 Python 版 v1.0.3
+中国联通 Python 版 v1.0.5
 
 包含以下功能:
 1. 首页签到 (话费红包/积分)
@@ -16,16 +16,19 @@
 
 更新说明:
 
+### 20260322
+v1.0.5:
+- 权益超市：接入会员中心浏览积分任务，并拆分独立子开关。
+- 区域专区：接入新疆每月抽奖新版 `themeAct` 链路。
+- 会员中心：补充页面预热、状态轮询和领奖兜底，提升成功率。
+- 日志：更新版本号，精简更新说明与启动输出。
+
 ### 20260321
 v1.0.3:
-- ☁️ **云盘任务增强**：改为按实时任务列表执行，移除已下架云盘任务分支，通用任务回查更稳，`90003600` 统一按“处理完成”输出。
-- 🎯 **云盘抽奖修复**：接入家乡打卡活动链，固定 `MjU=`，补齐归属地/开启/上传/抽奖日志，优化抽奖入口与无次数提示。
-- ⬆️ **云盘上传优化**：月上传按阶段停止，上传直连不走代理，失败后重建请求重试，超时可配，积分归因与任务记录对账更准确。
-- 🗑️ **云盘清理修复**：补齐官方删除接口与根目录 `8648/8648(n)` 清理，解决自动重命名导致的重复文件残留问题。
-- 🛡️ **云盘容错增强**：`taskDetail/taskRecords` 异常返回时改为跳过，不再因代理超时直接中断整轮任务。
-- 🌸 **权益超市修复**：按最新解密版恢复浇花 `X-Signature` 公式，请求头与 H5 浇水链路对齐。
-- 🎧 **联通爱听修复**：`jftask` 任务接口接入与云盘/安全管家一致的签名头。
-- 📍 **区域专区扩展**：新增云南生活专区任务，支持签到、浏览、抽奖和云豆查询。
+- 云盘：整合实时任务、家乡打卡抽奖、上传/清理与容错优化。
+- 权益超市：恢复浇花签名并对齐 H5 请求头。
+- 联通爱听：补齐 `jftask` 签名头。
+- 区域专区：新增云南生活任务。
 
 ### 20260301
 v1.0.2:
@@ -37,11 +40,6 @@ v1.0.2:
 - 🔧 **修复模拟阅读**：补齐 addReadTime 缺失的用户参数，增强嵌套响应解析。
 - 🔧 **修复安全管家**：getTicketByNative_sec 加入代理故障转移，避免代理失效时跳过全部任务。
 - ⏱️ **阅读冷却等待**：阅读专区与爱听任务间增加120秒间隔，适配联通2分钟阅读冷却限制。
-
-### 20260217
-v1.0.1:
-- 📝 **文档完善**: 迁移 JS 版头部说明，统一文档格式。
-- 🧹 **代码清理**: 全面审查并移除冗余注释，优化代码结构。
 
 配置说明:
 1. 账号变量 (chinaUnicomCookie):
@@ -118,6 +116,7 @@ globalConfig = {
     "market_config": {
         "run_water": True,        # False = 关闭浇水
         "run_task": True,         # False = 关闭做任务(浏览/分享)
+        "run_member_center": True, # False = 关闭浏览会员中心得积分
         "run_draw": True,         # True  = 开启抽奖
         "run_claim": True,       # True  = 开启自动领奖(建议开启, 不领白不领)
     },
@@ -131,6 +130,21 @@ COMMON_CONSTANTS = {
     "MARKET_H5_UA": "Mozilla/5.0 (Linux; Android 10; MI 8 Build/QKQ1.190828.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/143.0.7499.146 Mobile Safari/537.36; unicom{version:android@11.0802,desmobile:0};devicetype{deviceBrand:Xiaomi,deviceModel:MI 8}",
     "APP_VERSION": "android@11.0802",
 }
+MARKET_MEMBER_CENTER_PAGE_ID = "s782351687947921408"
+MARKET_MEMBER_CENTER_DISTRIBUTE_ID = "D1161369893988319232"
+MARKET_MEMBER_CENTER_PARTNERS_ID = "1703"
+MARKET_MEMBER_CENTER_CLIENT_TYPE = "marketUnicom"
+MARKET_MEMBER_CENTER_TASK_CODE = "s769153426294495232"
+XJ_ACTIVITY_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+XJ_ACTIVITY_YEAR = os.environ.get("XJ_ACTIVITY_YEAR", str(datetime.now().year))
+XJ_ACTIVITY_MONTH = os.environ.get("XJ_ACTIVITY_MONTH", XJ_ACTIVITY_MONTHS[datetime.now().month - 1])
+XJ_ACTIVITY_ID = f"{XJ_ACTIVITY_MONTH}{XJ_ACTIVITY_YEAR}Act"
+XJ_MONTHLY_DRAW_ATTEMPT_COUNT = max(int(os.environ.get("UNICOM_ATTEMPT_COUNT", "1") or "1"), 1)
+XJ_USER_AGENT = os.environ.get(
+    "XJ_USER_AGENT",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_2 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Mobile/15E148 unicom{version:iphone_c@12.0701};ltst;OSVersion/16.2"
+)
 UNICOM_CLOUD_UPLOAD_TIMEOUT = int(os.environ.get("UNICOM_CLOUD_UPLOAD_TIMEOUT", "120") or "120")
 UNICOM_CLOUD_UPLOAD_PROGRESS_BYTES = int(os.environ.get("UNICOM_CLOUD_UPLOAD_PROGRESS_BYTES", "6376590") or "6376590")
 WOCARE_CONSTANTS = {
@@ -186,6 +200,13 @@ def mask_str(s):
         return s
     except:
         return s
+
+
+def safe_int(value, default=0):
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
 
 class FailoverSession:
     """包装 requests.Session，自动为所有请求添加代理故障转移"""
@@ -1568,6 +1589,276 @@ class UserService:
                     self.log(f"权益超市: ❌ {name} [执行异常]: {e}")
             time.sleep(2)
 
+    def market_get_points_ticket(self, user_token):
+        try:
+            res = self.session.get(
+                "https://backward.bol.wo.cn/prod-api/auth/getTicket?channel=pointsPlatform",
+                headers={
+                    "Authorization": f"Bearer {user_token}",
+                    "User-Agent": COMMON_CONSTANTS["MARKET_UA"],
+                },
+                timeout=15,
+            ).json()
+            if res.get("code") == 200 and res.get("data"):
+                return res.get("data")
+            self.log(f"权益超市-会员中心: 获取 points ticket 失败: {res.get('msg') or res}")
+        except Exception as e:
+            self.log(f"权益超市-会员中心: 获取 points ticket 异常: {e}")
+        return None
+
+    def market_member_center_base_headers(self, points_ticket):
+        referer = (
+            f"https://m.jf.10010.com/ts-mobile/well/{MARKET_MEMBER_CENTER_PAGE_ID}"
+            f"?distributeId={MARKET_MEMBER_CENTER_DISTRIBUTE_ID}"
+            f"&partnersId={MARKET_MEMBER_CENTER_PARTNERS_ID}"
+            f"&clientType={MARKET_MEMBER_CENTER_CLIENT_TYPE}"
+            f"&ticket={points_ticket}"
+        )
+        return {
+            "origin": "https://m.jf.10010.com",
+            "clienttype": MARKET_MEMBER_CENTER_CLIENT_TYPE,
+            "ticket": points_ticket,
+            "partnersid": MARKET_MEMBER_CENTER_PARTNERS_ID,
+            "content-type": "application/json;charset=UTF-8",
+            "pageid": MARKET_MEMBER_CENTER_PAGE_ID,
+            "Accept": "application/json, text/plain, */*",
+            "Referer": referer,
+            "User-Agent": COMMON_CONSTANTS["MARKET_H5_UA"],
+            "X-Requested-With": "com.sinovatech.unicom.ui",
+        }
+
+    def market_get_secret_key_jf(self, points_ticket):
+        if (
+            getattr(self, "market_jf_secretKey", None)
+            and getattr(self, "market_jf_ticket", None) == points_ticket
+        ):
+            return self.market_jf_secretKey
+        try:
+            res = self.session.get(
+                "https://m.jf.10010.com/jf-external-application/jftask/getSecretKey",
+                headers=self.market_member_center_base_headers(points_ticket),
+                timeout=10,
+            ).json()
+            secret = res.get("data", {}).get("secretKey")
+            if res.get("code") == "0000" and secret:
+                self.market_jf_ticket = points_ticket
+                self.market_jf_secretKey = secret.encode("utf-8")
+                return self.market_jf_secretKey
+            self.log(f"权益超市-会员中心: getSecretKey 失败: {res}")
+        except Exception as e:
+            self.log(f"权益超市-会员中心: getSecretKey 异常: {e}")
+        return None
+
+    def market_build_signature_headers_jf(self, points_ticket):
+        secret_key = self.market_get_secret_key_jf(points_ticket)
+        if not secret_key:
+            return {}
+        request_ts = str(round(time.time() * 1000))
+        nonce = ''.join(random.choices('0123456789abcdefghijklmnopqrstuvwxyz', k=8))
+        signature = hmac.new(
+            secret_key,
+            f"{nonce}{request_ts}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return {
+            "x-request-timestamp": request_ts,
+            "x-request-nonce": nonce,
+            "x-request-signature": signature,
+        }
+
+    def market_member_center_headers(self, points_ticket, with_sign=False):
+        headers = self.market_member_center_base_headers(points_ticket)
+        if with_sign:
+            headers.update(self.market_build_signature_headers_jf(points_ticket))
+        return headers
+
+    def market_prepare_member_center_context(self, points_ticket):
+        signed_headers = self.market_member_center_headers(points_ticket, with_sign=True)
+        try:
+            self.session.post(
+                "https://m.jf.10010.com/jf-external-application/page/query",
+                json={
+                    "activityId": MARKET_MEMBER_CENTER_PAGE_ID,
+                    "distributeId": MARKET_MEMBER_CENTER_DISTRIBUTE_ID,
+                    "partnersId": MARKET_MEMBER_CENTER_PARTNERS_ID,
+                },
+                headers=signed_headers,
+                timeout=10,
+            )
+        except Exception as e:
+            self.log(f"权益超市-会员中心: page/query 预热异常: {e}")
+        try:
+            self.session.post(
+                "https://m.jf.10010.com/jf-external-application/jftask/userInfo",
+                json={},
+                headers=self.market_member_center_headers(points_ticket, with_sign=True),
+                timeout=10,
+            )
+        except Exception as e:
+            self.log(f"权益超市-会员中心: userInfo 预热异常: {e}")
+
+    def market_member_center_finish_code(self, task):
+        return safe_int(task.get("finish", task.get("status", 0)), 0)
+
+    def market_member_center_finish_text(self, task):
+        finish_text = str(task.get("finishText", "")).strip()
+        if finish_text:
+            return finish_text
+        return {
+            0: "未完成",
+            99: "待领取",
+            100: "已领取",
+        }.get(self.market_member_center_finish_code(task), "未知状态")
+
+    def market_query_member_center_task(self, points_ticket):
+        try:
+            res = self.session.post(
+                "https://m.jf.10010.com/jf-external-application/jftask/taskDetail",
+                json={},
+                headers=self.market_member_center_headers(points_ticket, with_sign=True),
+                timeout=10,
+            ).json()
+            if res.get("code") != "0000":
+                self.log(f"权益超市-会员中心: 查询任务失败: {res}")
+                return None
+            task_list = res.get("data", {}).get("taskDetail", {}).get("taskList", [])
+            return next(
+                (task for task in task_list if str(task.get("taskCode")) == MARKET_MEMBER_CENTER_TASK_CODE),
+                None,
+            )
+        except Exception as e:
+            self.log(f"权益超市-会员中心: 查询任务异常: {e}")
+            return None
+
+    def market_wait_member_center_task_state(self, points_ticket, expected_codes, attempts=4, delay=2):
+        task = None
+        for idx in range(1, attempts + 1):
+            task = self.market_query_member_center_task(points_ticket)
+            if task:
+                finish_code = self.market_member_center_finish_code(task)
+                finish_text = self.market_member_center_finish_text(task)
+                text_matches = (
+                    (finish_text == "待领取" and 99 in expected_codes)
+                    or (finish_text == "已领取" and 100 in expected_codes)
+                )
+                if finish_code in expected_codes or text_matches:
+                    return task
+                self.log(
+                    f"权益超市-会员中心: 第{idx}次回查状态 {finish_text}/{finish_code}，"
+                    f"本月进度 {safe_int(task.get('finishCount'), 0)}/{safe_int(task.get('needCount'), 0)}"
+                )
+            if idx < attempts:
+                time.sleep(delay)
+                self.market_prepare_member_center_context(points_ticket)
+        return task
+
+    def market_mark_member_center_browse_done(self, user_token, task_fix_id):
+        try:
+            headers = {
+                "Authorization": f"Bearer {user_token}",
+                "Origin": "https://contact.bol.wo.cn",
+                "Referer": "https://contact.bol.wo.cn/",
+                "Content-Type": "application/json",
+                "Accept": "*/*",
+                "User-Agent": COMMON_CONSTANTS["MARKET_H5_UA"],
+                "X-Requested-With": "com.sinovatech.unicom.ui",
+            }
+            detail = self.session.get(
+                f"https://backward.bol.wo.cn/prod-api/promotion/activityTask/getActivityTaskDetailByFixId?taskFixId={task_fix_id}",
+                headers=headers,
+                timeout=10,
+            ).json()
+            if detail.get("code") != 200:
+                self.log(f"权益超市-会员中心: 获取任务详情失败: {detail.get('msg') or detail}")
+                return False
+            task_data = detail.get("data") or {}
+            check_key = task_data.get("param1")
+            wait_seconds = max(safe_int(task_data.get("content"), 17), 15)
+            if not check_key:
+                self.log("权益超市-会员中心: 未拿到 checkKey，跳过浏览任务")
+                return False
+            self.log(f"权益超市-会员中心: 模拟浏览会员中心 {wait_seconds} 秒")
+            time.sleep(wait_seconds)
+            check = self.session.post(
+                f"https://backward.bol.wo.cn/prod-api/promotion/activityTaskShare/checkView?checkKey={check_key}",
+                json={},
+                headers=headers,
+                timeout=10,
+            ).json()
+            if check.get("code") == 200 and check.get("data") is True:
+                self.log("权益超市-会员中心: 浏览完成，任务已进入待领取")
+                return True
+            self.log(f"权益超市-会员中心: checkView 失败: {check.get('msg') or check}")
+        except Exception as e:
+            self.log(f"权益超市-会员中心: 浏览任务异常: {e}")
+        return False
+
+    def market_receive_member_center_points(self, points_ticket):
+        try:
+            res = self.session.post(
+                "https://m.jf.10010.com/jf-external-application/jfmarkettask/receive",
+                json={"taskCode": MARKET_MEMBER_CENTER_TASK_CODE},
+                headers=self.market_member_center_headers(points_ticket, with_sign=True),
+                timeout=10,
+            ).json()
+            if res.get("code") == "0000":
+                score = res.get("data", {}).get("score", "未知积分")
+                title = res.get("data", {}).get("title", "领取成功")
+                self.log(f"权益超市-会员中心: ✅ {title}，获得 {score}", notify=True)
+                return True
+            self.log(f"权益超市-会员中心: 领取失败: {res.get('msg') or res}")
+        except Exception as e:
+            self.log(f"权益超市-会员中心: 领取异常: {e}")
+        return False
+
+    def market_member_center_task(self, user_token):
+        self.log("权益超市-会员中心: 开始检查浏览任务")
+        points_ticket = self.market_get_points_ticket(user_token)
+        if not points_ticket:
+            return
+        self.market_prepare_member_center_context(points_ticket)
+        task = self.market_query_member_center_task(points_ticket)
+        if not task:
+            self.log("权益超市-会员中心: 未找到目标任务")
+            return
+        finish_code = self.market_member_center_finish_code(task)
+        finish_text = self.market_member_center_finish_text(task)
+        finish_count = safe_int(task.get("finishCount"), 0)
+        need_count = safe_int(task.get("needCount"), 0)
+        self.log(
+            f"权益超市-会员中心: 当前状态 {finish_text}/{finish_code}，"
+            f"本月进度 {finish_count}/{need_count}"
+        )
+        if finish_count >= need_count:
+            self.log("权益超市-会员中心: 本月次数已达上限")
+            return
+        if finish_code == 100 or finish_text == "已领取":
+            self.log("权益超市-会员中心: 今日已领取，跳过")
+            return
+        if finish_code == 0 or finish_text == "未完成":
+            jump_url = str(task.get("jumpUrl", "")).strip()
+            match = re.search(r"taskFixId=(\d+)", jump_url)
+            task_fix_id = match.group(1) if match else "90"
+            if not self.market_mark_member_center_browse_done(user_token, task_fix_id):
+                return
+            self.market_prepare_member_center_context(points_ticket)
+            task = self.market_wait_member_center_task_state(points_ticket, {99, 100}, attempts=4, delay=2)
+            if not task:
+                return
+            finish_code = self.market_member_center_finish_code(task)
+            finish_text = self.market_member_center_finish_text(task)
+            self.log(
+                f"权益超市-会员中心: 浏览后状态 {finish_text}/{finish_code}，"
+                f"本月进度 {safe_int(task.get('finishCount'), 0)}/{safe_int(task.get('needCount'), 0)}"
+            )
+        if finish_code == 99 or finish_text == "待领取":
+            self.market_receive_member_center_points(points_ticket)
+        elif finish_code != 100:
+            self.log("权益超市-会员中心: 状态未及时刷新，尝试直接领奖兜底")
+            if self.market_receive_member_center_points(points_ticket):
+                return
+            self.log("权益超市-会员中心: 直接领奖兜底失败，跳过")
+
     def market_task(self, is_query_only=False):
         self.log("==== 权益超市 ====")
         ticket = self.market_get_ticket()
@@ -1593,9 +1884,14 @@ class UserService:
                 if share_list:
                     self.market_do_share_list(share_list, user_token)
             else:
-                 self.log("权益超市: 缺 ecs_token, 跳过任务列表")
+                 self.log("权益超市: 缺 ecs_token, 跳过通用任务列表")
         else:
             self.log("权益超市-做任务: ⏭️ 已被总开关关闭，跳过")
+        if mc.get("run_member_center", True):
+            time.sleep(2)
+            self.market_member_center_task(user_token)
+        else:
+            self.log("权益超市-会员中心: ⏭️ 已被子开关关闭，跳过")
         if mc.get("run_draw", True):
             if self.market_get_raffle(user_token):
                 self.market_get_raffle_count(user_token)
@@ -4401,7 +4697,15 @@ class UserService:
         if is_query_only:
             self.log("==== 区域专区 (查询模式) ====")
             if is_xinjiang:
-                self.log("新疆专区: [查询模式] 跳过每日打卡 (无查询接口)")
+                self.log("新疆专区: [查询模式] 跳过每日打卡，尝试查询每月抽奖记录")
+                try:
+                    ticket_res = self.openPlatLineNew("https://zy100.xj169.com/touchpoint/openapi/jumpHandRoom1G?source=155&type=02")
+                    if ticket_res and ticket_res.get("ticket"):
+                        token = self.xj_get_token(ticket_res.get("ticket"))
+                        if token:
+                            self.xj_query_monthly_draw_records(token)
+                except Exception as e:
+                    self.log(f"新疆专区: [查询模式] 查询每月抽奖记录异常 {e}")
             if is_henan:
                 is_signed = self.shangdu_get_sign_status()
                 if is_signed is True:
@@ -4617,32 +4921,45 @@ class UserService:
         self.yunnan_life_get_bean_balance(token)
 
     def xj_task_main(self):
-        ticket = self.openPlatLineNew("https://zy100.xj169.com/touchpoint/openapi/jumpHandRoom1G?source=155&type=02")
-        if not ticket:
+        ticket_res = self.openPlatLineNew("https://zy100.xj169.com/touchpoint/openapi/jumpHandRoom1G?source=155&type=02")
+        if not ticket_res or not ticket_res.get("ticket"):
+            self.log("新疆专区: 获取入口 ticket 失败")
             return
-        token = self.xj_get_token(ticket)
+        token = self.xj_get_token(ticket_res.get("ticket"))
         if token:
             self.xj_do_draw(token, "Jan2026Act")
             day = datetime.now().day
             if 19 <= day <= 25:
                 self.xj_usersday_task(token)
+            self.xj_monthly_draw_task(token)
 
     def xj_get_token(self, ticket):
         try:
             url = "https://zy100.xj169.com/touchpoint/openapi/getTokenAndCity"
+            if isinstance(ticket, dict):
+                ticket = ticket.get("ticket")
             data = {"ticket": ticket}
-            headers = {"Referer": f"https://zy100.xj169.com/touchpoint/openapi/jumpHandRoom1G?source=155&type=02&ticket={ticket}"}
+            headers = {
+                "Referer": f"https://zy100.xj169.com/touchpoint/openapi/jumpHandRoom1G?source=155&type=02&ticket={ticket}",
+                "User-Agent": XJ_USER_AGENT,
+            }
             res = self.session.post(url, data=data, headers=headers).json()
-            if res.get('result', {}).get('code') == 0:
-                return res.get('result', {}).get('data', {}).get('token')
+            result = res.get('result', {})
+            if result.get('code') == 0 and result.get('data', {}).get('token'):
+                return result.get('data', {}).get('token')
+            token = res.get("data", {}).get("token")
+            if token:
+                return token
             return None
-        except: return None
+        except Exception as e:
+            self.log(f"新疆专区: 获取 token 异常 {e}")
+            return None
 
     def xj_do_draw(self, token, act_id):
         try:
             url = f"https://zy100.xj169.com/touchpoint/openapi/marchAct/draw_{act_id}"
             data = {"activityId": f"daka{act_id}", "prizeId": ""}
-            headers = {"userToken": token}
+            headers = {"userToken": token, "User-Agent": XJ_USER_AGENT}
             res = self.session.post(url, data=data, headers=headers).json()
             msg = res.get('result', {}).get('msg') or res.get('result', {}).get('data') or "失败"
             self.log(f"新疆专区: 每日打卡 - {msg}", notify=True)
@@ -4653,11 +4970,101 @@ class UserService:
         try:
             url = "https://zy100.xj169.com/touchpoint/openapi/marchAct/draw_UsersDay2025Act"
             data = {"activityId": "usersDay2025Act", "prizeId": "hfq_twenty"}
-            headers = {"userToken": token}
+            headers = {"userToken": token, "User-Agent": XJ_USER_AGENT}
             res = self.session.post(url, data=data, headers=headers).json()
             msg = res.get('result', {}).get('msg') or res.get('result', {}).get('data') or "失败"
             self.log(f"新疆客户日: 秒杀结果 - {msg}", notify=True)
-        except: pass
+        except Exception as e:
+            self.log(f"新疆客户日: 秒杀异常 {e}")
+
+    def xj_monthly_draw_once(self, token):
+        headers = {
+            "User-Agent": XJ_USER_AGENT,
+            "userToken": token,
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        }
+        payload = {"activityId": XJ_ACTIVITY_ID, "prizeId": "", "commHighFlag": "false"}
+        try:
+            res = self.session.post(
+                f"https://zy100.xj169.com/touchpoint/openapi/themeAct/draw_{XJ_ACTIVITY_ID}",
+                data=payload,
+                headers=headers,
+                timeout=10,
+            ).json()
+            code = res.get("code")
+            msg = str(res.get("msg", ""))
+            msg_type = str(res.get("msgType", ""))
+            data = res.get("data", "")
+            if code == "ERROR":
+                data_str = str(data)
+                if "已用完" in data_str or "已抽完" in data_str or msg_type == "101":
+                    return "done", f"今日机会已用尽 ({data_str or msg or '无可用次数'})"
+                if "频率过高" in msg:
+                    return "done", "接口频率限制"
+                if "缺少参数" in msg:
+                    return "invalid", "token 已失效"
+                return "done", f"抽奖失败: {data_str or msg or '未知错误'}"
+            if code == "SUCCESS":
+                if msg == "thanks1":
+                    return "continue", f"未中奖 ({data or msg})"
+                return "won", f"中奖: {data or '未知奖品'}"
+            if str(code) == "401":
+                return "invalid", "token 已失效"
+            return "continue", f"未中奖 ({msg or data or code})"
+        except Exception as e:
+            return "error", f"请求异常: {e}"
+
+    def xj_query_monthly_draw_records(self, token):
+        headers = {
+            "User-Agent": XJ_USER_AGENT,
+            "userToken": token,
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        }
+        try:
+            res = self.session.post(
+                "https://zy100.xj169.com/touchpoint/openapi/drawAct/getPrizesScroll",
+                data={"activityId": XJ_ACTIVITY_ID},
+                headers=headers,
+                timeout=10,
+            ).json()
+            data = res.get("data", [])
+            if not data:
+                self.log("新疆专区: 每月抽奖暂无中奖记录")
+                return
+            if isinstance(data, dict):
+                data = [data]
+            if isinstance(data, list) and data and isinstance(data[0], str):
+                for item in data[:5]:
+                    self.log(f"新疆专区: 每月抽奖记录 - {item}", notify=True)
+                return
+            displayed = 0
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                prize_name = item.get("prizeName") or item.get("prizeId") or "未知奖品"
+                draw_ts = safe_int(item.get("drawDate"), 0)
+                draw_date = datetime.fromtimestamp(draw_ts / 1000).strftime("%m-%d") if draw_ts else "未知时间"
+                self.log(f"新疆专区: 每月抽奖记录 - {prize_name} ({draw_date})", notify=True)
+                displayed += 1
+                if displayed >= 5:
+                    break
+            if displayed == 0:
+                self.log("新疆专区: 每月抽奖暂无可展示记录")
+        except Exception as e:
+            self.log(f"新疆专区: 查询每月抽奖记录异常 {e}")
+
+    def xj_monthly_draw_task(self, token):
+        self.log(f"新疆专区: 每月抽奖活动 {XJ_ACTIVITY_ID}")
+        for i in range(XJ_MONTHLY_DRAW_ATTEMPT_COUNT):
+            status, msg = self.xj_monthly_draw_once(token)
+            self.log(
+                f"新疆专区: 每月抽奖第{i + 1}次 - {msg}",
+                notify=status == "won",
+            )
+            if status in {"done", "won", "invalid"}:
+                break
+            time.sleep(random.uniform(1, 2))
+        self.xj_query_monthly_draw_records(token)
 
     def shangdu_get_sign_status(self):
         try:
@@ -5281,7 +5688,7 @@ def do_notify(users):
 
 def main():
     global GRAB_AMOUNT
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [Script Start] chinaUnicom Python v1.0.2")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [Script Start] chinaUnicom Python v1.0.5")
     cookies = os.environ.get("chinaUnicomCookie", "")
     if not cookies:
         print("[-] 未在环境变量 chinaUnicomCookie 中找到配置")
@@ -5352,6 +5759,7 @@ def main():
         if key == "enable_market" and enabled and not query_only and not grab_mode:
             print(f"  └─ 浇水: {'开启' if mc.get('run_water', True) else '关闭'}")
             print(f"  └─ 做任务: {'开启' if mc.get('run_task', True) else '关闭'}")
+            print(f"  └─ 会员中心: {'开启' if mc.get('run_member_center', True) else '关闭'}")
             print(f"  └─ 抽奖: {'开启' if mc.get('run_draw', True) else '关闭'}")
             print(f"  └─ 自动领奖: {'开启' if mc.get('run_claim', False) else '关闭'}")
     print(f"设备ID刷新: {'强制刷新' if globalConfig.get('refresh_device_id', False) else '使用缓存'}")
