@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-中国联通 Python 版 v1.0.7
+中国联通 Python 版 v1.0.9
 
 包含以下功能:
 1. 首页签到 (话费红包/积分)
@@ -16,6 +16,19 @@
 
 更新说明:
 
+### 20260430
+v1.0.9:
+- 云盘：新增测速抽奖与多账号组队。
+- 云盘：新增抽奖记录查询，优化推送内容。
+- 云盘：移除过期拼图、家乡活动。
+- 推送：新增通知开关。
+
+### 20260426
+v1.0.8:
+- 通通乡村：新增任务模块，支持签到、浏览、垃圾分类与农场任务。
+- 通通乡村：补充农场新手任务，防卡死处理。
+- 云智手机：更新活动code。
+
 ### 20260331
 v1.0.7:
 - 区域专区：新增安徽联通"超级星期五"抢红包，支持自定义面额。
@@ -26,21 +39,6 @@ v1.0.6:
 - 区域专区：新增辽宁联通"福利魔方"自动化签到与资产明细展示。
 - 安全管家：重构接入最新多类拦截选项及助手安全积分获取通道。
 - 权益超市：增加查抢话费记录 `receiveTime` 空值防报错处理。
-
-### 20260322
-v1.0.5:
-- 云盘：1GB上传任务改用秒传(quickTransfer)，无需真实上传文件，几秒完成。
-- 权益超市：接入会员中心浏览积分任务，并拆分独立子开关。
-- 区域专区：接入新疆每月抽奖新版 `themeAct` 链路。
-- 会员中心：补充页面预热、状态轮询和领奖兜底，提升成功率。
-- 日志：更新版本号，精简更新说明与启动输出。
-
-### 20260321
-v1.0.3:
-- 云盘：整合实时任务、家乡打卡抽奖、上传/清理与容错优化。
-- 权益超市：恢复浇花签名并对齐 H5 请求头。
-- 联通爱听：补齐 `jftask` 签名头。
-- 区域专区：新增云南生活任务。
 
 配置说明:
 1. 账号变量 (chinaUnicomCookie):
@@ -69,7 +67,7 @@ v1.0.3:
 
 From: YaoHuo8648
 Email: zheyizzf@188.com
-Update: 2026.03.31
+Update: 2026.04.30
 """
 import os
 import sys
@@ -104,6 +102,7 @@ globalConfig = {
     # --- 1. 功能总开关 (True=开启, False=关闭) ---
     "enable_sign": True,          # 首页签到 (🔺总开关, 含签到/任务/抢话费券)
     "enable_ttlxj": True,         # 天天领现金
+    "enable_ttxc": True,          # 通通乡村
     "enable_ltzf": True,          # 联通祝福
     "enable_woread": False,        # 联通阅读
     "enable_security": True,      # 安全管家
@@ -112,6 +111,7 @@ globalConfig = {
     "enable_aiting": True,        # 联通爱听
     "enable_wostore": True,       # 沃云手机
     "enable_regional": True,      # 区域专区
+    "enable_notify": True,        # 推送通知
 
     # --- ✅ 签到区内部细分开关 ---
     "sign_config": {
@@ -187,11 +187,24 @@ YUNNAN_LIFE_TASKS = [
     {"taskName": "每日签到", "taskCode": "DAILY_SIGN"},
     {"taskName": "浏览年终大回馈,好礼多多", "taskCode": "BROWSE_5TOWNS"},
 ]
+TTXC_BASE_URL = "https://epay.10010.com/cu-ca-game-front"
+TTXC_APP_BASE_URL = "https://epay.10010.com/cu-ca-app-front"
+TTXC_CHANNEL = "225"
+TTXC_REFERER = "https://epay.10010.com/cu-ca-game-web/index.html?channel=qdqp"
+TTXC_GARBAGE_WAIT_SECONDS = int(os.environ.get("UNICOM_TTXC_GARBAGE_WAIT", "28") or "28")
+TTXC_GROW_MAX_CHARGE_PER_LAND = int(os.environ.get("UNICOM_TTXC_GROW_MAX_CHARGE_PER_LAND", "20") or "20")
+TTXC_HARVEST_WAIT_SECONDS = int(os.environ.get("UNICOM_TTXC_HARVEST_WAIT", "3") or "3")
+TTXC_NEWBIE_STEPS = ["G01", "G02", "G03", "G03_2", "G04", "G05", "G09", "G10", "G11", "G12"]
 GRAB_AMOUNT = os.environ.get("UNICOM_GRAB_AMOUNT", "5")
 AH_FRIDAY_AMOUNT = os.environ.get("UNICOM_AH_FRIDAY_AMOUNT", "")
 AH_FRIDAY_BASE_URL = "http://123.138.11.116:8080"
 AH_FRIDAY_SECKILL_TIMES = int(os.environ.get("UNICOM_AH_FRIDAY_TIMES", "50") or "50")
 AH_FRIDAY_INTERVAL = float(os.environ.get("UNICOM_AH_FRIDAY_INTERVAL", "0.3") or "0.3")
+WOSTORE_CLOUD_ACTIVITY_CODE = "HD2026033000125"
+WOSTORE_CLOUD_TIMEOUT = int(os.environ.get("UNICOM_WOSTORE_TIMEOUT", "15") or "15")
+WOSTORE_CLOUD_RETRIES = int(os.environ.get("UNICOM_WOSTORE_RETRIES", "3") or "3")
+CLOUD_SPEED_ACTIVITY_ID = "Mjc="
+CLOUD_SPEED_TEAM_CONTEXT = {}
 UNICOM_TOKEN_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unicom_token_cache.json")
 if "UNICOM_PROXY_API" not in os.environ:
     os.environ.pop("http_proxy", None)
@@ -308,6 +321,8 @@ class UserService:
         self.tokenId_cookie = "chinaunicom-" + self.random_string(32, string.ascii_uppercase + string.digits)
         self.ecs_token = ""
         self.rptId = ""
+        self.ttxc_newbie_list = None
+        self.ttxc_nick_name = ""
         self.sec_ai_share_key = ""
         self.sec_share_task_code = ""
         self.sec_share_task_name = "联通助理-分享AI助手对话"
@@ -1957,18 +1972,19 @@ class UserService:
                 'doPopUp': "https://m.jf.10010.com/jf-external-application/jftask/popUp",
                 'toFinish': "https://m.jf.10010.com/jf-external-application/jftask/toFinish",
                 'lottery': "https://panservice.mail.wo.cn/activity/lottery",
-                'openActivity': "https://panservice.mail.wo.cn/activity/openActivity",
-                'checkActivityStatus': "https://panservice.mail.wo.cn/activity/checkActivityStatus",
                 'userInfo': "https://m.jf.10010.com/jf-external-application/jftask/userInfo",
                 'ai_query': "https://panservice.mail.wo.cn/wohome/ai/assistant/query",
                 'lottery_times': "https://panservice.mail.wo.cn/activity/lottery/lottery-times",
+                'lottery_record': "https://panservice.mail.wo.cn/activity/lottery/recordList",
+                'speed_team_create': "https://panservice.mail.wo.cn/activity/team/createTeam",
+                'speed_team_token': "https://panservice.mail.wo.cn/activity/team/generateUserTeamToken",
+                'speed_team_join': "https://panservice.mail.wo.cn/activity/team/joinTeam",
+                'speed_team_member': "https://panservice.mail.wo.cn/activity/teamMember/isUserInTeam",
+                'speed_task_activate': "https://panservice.mail.wo.cn/activity/task/activate",
                 'aiMoveFile': "https://panservice.mail.wo.cn/wohome/open/v1/ai/moveFile2SystemFolder",
-                'activityUpload2C': "https://du.smartont.net:8443/openapi/client/upload2C",
-                'queryPhoneLocation': "https://panservice.mail.wo.cn/api-user/user/info/query",
                 'getScanState': "https://s.pan.wo.cn/wohome/intelligentClean/getScanStateAndResult",
                 'getCleanData': "https://s.pan.wo.cn/wohome/intelligentClean/getCleanData",
                 'batchClean': "https://s.pan.wo.cn/wohome/intelligentClean/batchClean",
-                'vote': "https://panservice.mail.wo.cn/activity/activity-task/vote",
                 'secretKey': "https://m.jf.10010.com/jf-external-application/jftask/getSecretKey",
                 'taskFinish': "https://panservice.mail.wo.cn/activity/member-point/v1/task/finish",
             }
@@ -2044,37 +2060,6 @@ class UserService:
                  'Content-Type': 'application/json;charset=utf-8',
                  'Origin': 'https://panservice.mail.wo.cn',
              })
-        elif url_name.startswith('cloud_') or 'shareCard' in url_name:
-             current_token = getattr(self.cloudDisk, 'userToken', '')
-             headers.update({
-                'Host': 'panservice.mail.wo.cn',
-                'Accept': 'application/json, text/plain, */*',
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 15; PJZ110 Build/AP3A.240617.008; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/144.0.7559.109 Mobile Safari/537.36/woapp LianTongYunPan/5.1.0 (Android 15)',
-                'client-Id': '1001000035',
-                'X-YP-Client-Id': '1001000035',
-                'accessToken': current_token,
-                'access-token': current_token,
-                'X-YP-Access-Token': current_token,
-                'Authorization': f'Bearer {current_token}',
-                'X-Requested-With': 'com.chinaunicom.bol.cloudapp',
-                'Content-Type': 'application/json',
-                'Origin': 'https://panservice.mail.wo.cn',
-             })
-             touchpoint = '300300010032'
-             if 'lightPuzzle' in url_name: touchpoint = '300300010003'
-             if 'shareCardReceive' in url_name:
-                  headers['User-Agent'] = "Mozilla/5.0 (Linux; Android 15; PJZ110 Build/AP3A.240617.008; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/142.0.7444.173 Mobile Safari/537.36 XWEB/1420229 MMWEBSDK/20250802 MMWEBID/7928 MicroMessenger/8.0.62.2900(0x28003EA0) WeChat/arm64 Weixin NetType/WIFI Language/zh_CN ABI/arm64"
-                  headers['X-Requested-With'] = "com.tencent.mm"
-                  headers['X-YP-GRAY-FLAG'] = "undefined"
-                  uniq_key = payload.get('uniqKey', '') if isinstance(payload, dict) else ''
-                  card_code = payload.get('_cardCode', 'LT') if isinstance(payload, dict) else 'LT'
-                  if isinstance(payload, dict) and '_cardCode' in payload:
-                       del payload['_cardCode']
-                  headers['Referer'] = f"https://panservice.mail.wo.cn/h5/activitymobile/newYears26?uniqKey={uniq_key}&cardCode={card_code}&activityId=SPRING_FESTIVAL_2026&page=1&touchpoint=undefined"
-             else:
-                  headers['Referer'] = f"https://panservice.mail.wo.cn/h5/activitymobile/newYears26?activityId=SPRING_FESTIVAL_2026&touchpoint={touchpoint}&token={current_token}"
-                  if url_name == 'shareCard':
-                       headers['X-YP-GRAY-FLAG'] = "undefined"
         for attempt in range(1, 4):
             try:
                 if method == 'get':
@@ -2811,196 +2796,54 @@ class UserService:
         self.cloudDisk.uploadedFileCount = 0
         self.log("云盘任务: 云盘重复文件清理完成")
 
-    def vote_cloud(self):
-        token = getattr(self.cloudDisk, 'userToken', '')
-        if not token:
-            return
-        ypid_list = getattr(self.cloudDisk, 'ypid_list', [])
-        if not ypid_list:
-            return
-        headers = {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json',
-            'User-Agent': "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) LianTongYunPan/4.0.2 (iPhone; iOS 16.6)",
-            'Sec-Fetch-Mode': 'cors',
-            'clientId': '1001000165',
-            'Origin': 'https://panservice.mail.wo.cn',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Site': 'same-origin',
-            'X-YP-Access-Token': token, 'token': token,
-            'X-YP-Client-Id': '1001000165',
-            'X-SH-Access-Token': '',
-            'source-type': 'woapi',
-        }
-        for idx in range(3):
-            try:
-                self.session.post(
-                    self.cloudDiskUrls['vote'], json={"activityId": "MjQ=", "id": random.choice(ypid_list)},
-                    headers=headers, timeout=10,
-                )
-                self.log(f"云盘任务: 第{idx + 1}次投票")
-            except Exception as e:
-                self.log(f"云盘任务: 第{idx + 1}次投票失败: {e}")
-            time.sleep(1)
-
-    def build_cloud_lottery_headers(self):
+    def build_cloud_lottery_headers(self, activity_id=CLOUD_SPEED_ACTIVITY_ID, share_token=""):
         token = getattr(self.cloudDisk, 'userToken', '')
         if not token:
             return {}
+        referer = f"https://panservice.mail.wo.cn/h5/mobile/speed/start?activityId={quote(activity_id)}&touchpoint=300300010005&token={token}"
+        if share_token:
+            referer = f"https://panservice.mail.wo.cn/h5/mobile/speed/start?shareInfo={quote(share_token)}"
         return {
-            'User-Agent': "Mozilla/5.0 (Linux; Android 10; MI 8 Build/QKQ1.190828.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/143.0.7499.146 Mobile Safari/537.36/woapp LianTongYunPan/5.1.2 (Android 10)",
-            'Accept': 'application/json, text/plain, */*',
-            'source-type': 'woapi',
-            'Sec-Fetch-Site': 'same-origin',
-            'clientId': '1001000165',
-            'Accept-Language': 'zh-CN,zh-Hans;q=0.9',
-            'token': token,
-            'X-SH-Access-Token': '',
-            'Sec-Fetch-Mode': 'cors',
-            'X-YP-Access-Token': token,
-            'X-YP-Client-Id': '1001000165',
-            'X-Requested-With': 'com.chinaunicom.bol.cloudapp',
-            'X-YP-GRAY-FLAG': 'undefined',
-            'Sec-Fetch-Dest': 'empty',
-        }
-
-    def build_cloud_hometown_headers(self, extra=None):
-        token = getattr(self.cloudDisk, 'userToken', '')
-        if not token:
-            return {}
-        headers = {
-            'User-Agent': "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) LianTongYunPan/5.1.0 (iPhone; iOS 16.6)",
+            'User-Agent': "Mozilla/5.0 (Linux; Android 9; 2210132C Build/PQ3A.190605.10201411; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36/woapp LianTongYunPan/5.3.0 (Android 9)",
             'Accept': 'application/json, text/plain, */*',
             'Content-Type': 'application/json',
-            'Accept-Language': 'zh-CN,zh-Hans;q=0.9',
             'source-type': 'woapi',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Dest': 'empty',
-            'clientId': '1001000165',
-            'X-YP-Client-Id': '1001000165',
-            'X-YP-Access-Token': token,
+            'clientId': '1001000035',
+            'Client-Id': '1001000035',
             'token': token,
-            'X-SH-Access-Token': '',
-            'X-YP-GRAY-FLAG': 'undefined',
-            'requestTime': str(int(time.time() * 1000)),
-        }
-        if extra:
-            headers.update(extra)
-        return headers
-
-    def build_cloud_activity_headers(self, activity_id=""):
-        token = getattr(self.cloudDisk, 'userToken', '')
-        if not token:
-            return {}
-        headers = {
-            'User-Agent': "Mozilla/5.0 (Linux; Android 10; MI 8 Build/QKQ1.190828.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/143.0.7499.146 Mobile Safari/537.36/woapp LianTongYunPan/5.1.2 (Android 10)",
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-            'source-type': 'woapi',
-            'clientId': '1001000165',
-            'client-Id': '1001000165',
-            'token': token,
-            'accessToken': token,
-            'access-token': token,
+            'accesstoken': token,
+            'Access-Token': token,
             'X-YP-Access-Token': token,
-            'X-YP-Client-Id': '1001000165',
-            'X-SH-Access-Token': '',
+            'X-YP-Client-Id': '1001000035',
             'X-Requested-With': 'com.chinaunicom.bol.cloudapp',
-            'X-YP-GRAY-FLAG': 'undefined',
             'Origin': 'https://panservice.mail.wo.cn',
+            'Referer': referer,
         }
-        if activity_id:
-            point_ticket = getattr(self.cloudDisk, 'ticket', '')
-            mobile = getattr(self, 'account_mobile', '') or getattr(self, 'mobile', '')
-            if activity_id == 'MjU=' and point_ticket and mobile:
-                headers['Referer'] = (
-                    "https://panservice.mail.wo.cn/h5/activitymobile/fileUploadActive"
-                    "?touchpoint=300200030001&type=06"
-                    f"&ticket={point_ticket}"
-                    "&version=iphone_c%4012.0801"
-                    f"&timestamp={int(time.time() * 1000)}"
-                    f"&desmobile={mobile}"
-                    "&num=0&postage=01addda9786dc7eb5ca0eacd9acd664a"
-                    f"&activityId={quote(activity_id)}&clientid=1001000003"
-                    f"&userNumber={mobile}"
-                )
-            else:
-                headers['Referer'] = f"https://panservice.mail.wo.cn/h5/activitymobile/fileUploadActive?touchpoint=300300010005&activityId={quote(activity_id)}&token={token}"
-        return headers
 
     def get_cloud_lottery_draw_count(self, times_res):
-        result = times_res.get('result')
+        result = times_res.get('result') if isinstance(times_res, dict) else None
         if isinstance(result, int):
             return result
         if not isinstance(result, dict):
             return 0
-        draw_count = result.get('times')
-        if draw_count is None:
-            for key in ['lotteryTimes', 'freeTimes', 'drawTimes', 'count']:
-                if key in result:
-                    draw_count = result.get(key)
-                    break
-        try:
-            return int(draw_count or 0)
-        except:
-            return 0
+        for key in ['times', 'lotteryTimes', 'freeTimes', 'drawTimes', 'count']:
+            if key in result:
+                try:
+                    return int(result.get(key) or 0)
+                except:
+                    return 0
+        return 0
 
-    def query_cloud_phone_location_cloud(self):
-        province_code = str(getattr(self.cloudDisk, 'hometownProvinceCode', '') or '')
-        province_name = str(getattr(self.cloudDisk, 'hometownProvinceName', '') or '')
-        if province_code and province_name:
-            return province_code, province_name
-        token = getattr(self.cloudDisk, 'userToken', '')
-        mobile = getattr(self, 'account_mobile', '') or getattr(self, 'mobile', '')
-        headers = self.build_cloud_hometown_headers({"X-SH-Access-Token": ""})
-        if not token or not mobile or not headers:
-            return "", ""
-        try:
-            res = self.session.post(
-                self.cloudDiskUrls['queryPhoneLocation'],
-                json={"mobile": self.encrypt_data_cloud(mobile, "CBWGjFHjZdhTf7h8")},
-                headers=headers,
-                timeout=10,
-            ).json()
-            if str(res.get('meta', {}).get('code')) == '200':
-                result = res.get('result') or {}
-                province_code = str(result.get('provinceCode') or '')
-                province_name = str(result.get('provinceName') or '')
-                if province_code and province_name:
-                    self.cloudDisk.hometownProvinceCode = province_code
-                    self.cloudDisk.hometownProvinceName = province_name
-                    self.log(f"家乡打卡 - 归属地: {province_name}({province_code})")
-                    return province_code, province_name
-            self.log(f"云盘任务: 查询号码归属地失败: {res}")
-        except Exception as e:
-            self.log(f"云盘任务: 查询号码归属地异常: {e}")
-        return "", ""
-
-    def get_cloud_activity_province(self):
-        province_code = str(getattr(self.cloudDisk, 'hometownProvinceCode', '') or '')
-        province_name = str(getattr(self.cloudDisk, 'hometownProvinceName', '') or '')
-        if province_code and province_name:
-            return province_code, province_name
-        province_code, province_name = self.query_cloud_phone_location_cloud()
-        if province_code and province_name:
-            return province_code, province_name
-        if (not hasattr(self, 'city_info')) or (not self.city_info):
-            self.get_city_info()
-        if not isinstance(getattr(self, 'city_info', None), list) or not self.city_info:
-            return "", ""
-        city = self.city_info[0] if isinstance(self.city_info[0], dict) else {}
-        province_code = str(city.get('proCode') or city.get('standardProvinceCode') or "").lstrip('0')
-        province_name = str(city.get('proName') or city.get('provinceName') or "")
-        if province_code and province_name:
-            self.cloudDisk.hometownProvinceCode = province_code
-            self.cloudDisk.hometownProvinceName = province_name
-        return province_code, province_name
+    def is_cloud_lottery_notify_prize(self, prize_name):
+        name = str(prize_name or '').strip()
+        if not name:
+            return False
+        return name != "暂无抽奖记录"
 
     def query_cloud_lottery_times_cloud(self, activity_id, headers=None):
         if not activity_id:
             return None
-        use_headers = dict(headers or self.build_cloud_lottery_headers())
+        use_headers = dict(headers or self.build_cloud_lottery_headers(activity_id))
         if not use_headers:
             return None
         use_headers['requestTime'] = str(int(time.time() * 1000))
@@ -3008,236 +2851,178 @@ class UserService:
         self.cloudDisk.lotteryTimesResult = res
         return res
 
-    def ensure_cloud_lottery_activity_open_cloud(self, activity_id):
-        headers = self.build_cloud_activity_headers(activity_id)
-        if not headers:
-            return False
+    def query_cloud_lottery_record_cloud(self, activity_id, limit=5):
+        headers = self.build_cloud_lottery_headers(activity_id)
+        if not activity_id or not headers:
+            return []
         try:
-            check_headers = dict(headers)
-            check_headers['requestTime'] = str(int(time.time() * 1000))
-            check_res = self.session.get(self.cloudDiskUrls['checkActivityStatus'], params={"activityId": activity_id}, headers=check_headers, timeout=10).json()
-            if str(check_res.get('meta', {}).get('code')) == '200' and str(check_res.get('result', {}).get('state')) == '1':
-                if activity_id == 'MjU=':
-                    self.log("家乡打卡 - 开启结果：开启成功")
-                return True
-        except Exception as e:
-            self.log(f"云盘任务: 查询抽奖活动开启状态失败: {e}")
-        province_code, province_name = self.get_cloud_activity_province()
-        if not province_code or not province_name:
-            self.log("云盘任务: 开启抽奖活动失败，缺少省份信息")
-            return False
-        try:
-            open_headers = dict(headers)
-            open_headers['requestTime'] = str(int(time.time() * 1000))
-            res = self.session.post(
-                self.cloudDiskUrls['openActivity'],
-                json={"activityId": activity_id, "provinceCode": province_code, "provinceName": province_name},
-                headers=open_headers,
-                timeout=10,
-            ).json()
-            if str(res.get('meta', {}).get('code')) == '200' and str(res.get('result', {}).get('state')) == '1':
-                if activity_id == 'MjU=':
-                    self.log("家乡打卡 - 开启结果：开启成功")
-                else:
-                    self.log(f"云盘任务: 抽奖活动[{activity_id}] 已开启")
-                return True
-            if activity_id == 'MjU=':
-                message = res.get('msg') or res.get('meta', {}).get('message') or '开启失败'
-                self.log(f"家乡打卡 - 开启结果：{message}")
-            else:
-                self.log(f"云盘任务: 开启抽奖活动失败: {res}")
-        except Exception as e:
-            self.log(f"云盘任务: 开启抽奖活动异常: {e}")
-        return False
-
-    def query_cloud_lottery_record_cloud(self, activity_id):
-        if not activity_id:
-            return None
-        headers = self.build_cloud_hometown_headers() if activity_id == 'MjU=' else self.build_cloud_lottery_headers()
-        if not headers:
-            return None
-        try:
-            response = self.session.get(
-                f"https://panservice.mail.wo.cn/activity/lottery/recordList?activityId={quote(activity_id)}",
-                headers=headers,
-                timeout=10,
-            )
-            result = response.json() if response.status_code == 200 else None
-            if not isinstance(result, dict):
-                return None
-            if str(result.get('meta', {}).get('code')) == '200':
-                record_list = result.get('result') or []
-                prize = record_list[0].get('prizeName', '暂无抽奖记录') if record_list else '暂无抽奖记录'
-                if activity_id == 'MjU=':
-                    self.log(f"家乡打卡 - 上次抽奖：{prize}")
-                return prize
+            res = self.session.get(self.cloudDiskUrls['lottery_record'], params={"activityId": activity_id}, headers=headers, timeout=10).json()
+            if str(res.get('meta', {}).get('code')) == '200':
+                record_list = res.get('result') or []
+                if not record_list:
+                    self.log("云盘任务: 测速抽奖记录: 暂无记录")
+                    return []
+                display_records = record_list[:limit]
+                self.log(f"云盘任务: 测速抽奖记录: 最近 {len(display_records)} 条")
+                for item in display_records:
+                    prize = item.get('prizeName') or '未知奖品'
+                    create_time = item.get('createTime') or ''
+                    status = item.get('isAccountTxt') or ''
+                    suffix = f" | {status}" if status else ""
+                    self.log(f"云盘任务: 测速抽奖记录: {create_time} | {prize}{suffix}")
+                return display_records
         except Exception as e:
             self.log(f"云盘任务: 查询抽奖记录异常: {e}")
-        return None
-
-    def do_activity_upload_cloud(self, activity_id):
-        token = getattr(self.cloudDisk, 'userToken', '')
-        upload_path = self.get_cloud_upload_file_path()
-        if not token or not upload_path:
-            return False
-        file_size = os.path.getsize(upload_path)
-        file_name = self.get_cloud_upload_name_cloud()
-        file_info = self.encrypt_data_cloud(json.dumps({
-            "batchNo": datetime.now().strftime("%Y%m%d%H%M%S"),
-            "fileName": file_name,
-            "fileSize": file_size,
-            "fileType": 1,
-            "directoryId": "0",
-            "spaceType": "0",
-        }, ensure_ascii=False, separators=(',', ':')), token)
-        headers = {
-            'User-Agent': "Mozilla/5.0 (Linux; Android 10; MI 8 Build/QKQ1.190828.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/143.0.7499.146 Mobile Safari/537.36/woapp LianTongYunPan/5.1.2 (Android 10)",
-            'Accept': '*/*',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Origin': 'https://panservice.mail.wo.cn',
-            'Referer': f"https://panservice.mail.wo.cn/h5/activitymobile/fileUploadActive?touchpoint=300300010005&activityId={quote(activity_id)}&token={token}",
-            'X-Requested-With': 'com.chinaunicom.bol.cloudapp',
-            'accessToken': token,
-            'access-token': token,
-            'client_id': '1001000165',
-            'X-YP-GRAY-FLAG': 'undefined',
-            'requestTime': str(int(time.time() * 1000)),
-        }
-        try:
-            if activity_id == 'MjU=':
-                self.log("开始家乡打卡文件上传...")
-            with open(upload_path, 'rb') as file_obj:
-                files = {
-                    "uniqueId": (None, f"{int(time.time() * 1000)}_{random.random()}"),
-                    "accessToken": (None, token),
-                    "psToken": (None, "undefined"),
-                    "totalPart": (None, "1"),
-                    "partSize": (None, str(file_size)),
-                    "partIndex": (None, "1"),
-                    "channel": (None, "wocloud"),
-                    "directoryId": (None, "0"),
-                    "fileName": (None, file_name),
-                    "fileSize": (None, str(file_size)),
-                    "fileInfo": (None, file_info),
-                    "file": (file_name, file_obj, "image/jpeg"),
-                }
-                res = self.request_direct("POST", self.cloudDiskUrls['activityUpload2C'], headers=headers, files=files, timeout=UNICOM_CLOUD_UPLOAD_TIMEOUT)
-            res_json = {}
-            try:
-                res_json = res.json()
-            except:
-                pass
-            code = str(res_json.get('code', ''))
-            meta_code = str(res_json.get('meta', {}).get('code', ''))
-            if res.status_code == 200 and (code in ('200', '0', '0000') or meta_code in ('200', '0', '0000')):
-                self.cloudDisk.uploadedFileCount = int(getattr(self.cloudDisk, 'uploadedFileCount', 0) or 0) + 1
-                if activity_id == 'MjU=':
-                    self.log("家乡打卡 - 上传成功")
-                else:
-                    self.log("云盘任务: 活动上传成功，正在刷新抽奖次数...")
-                return True
-            if activity_id == 'MjU=':
-                self.log(f"家乡打卡 - 上传失败: HTTP {res.status_code}")
-            else:
-                self.log(f"云盘任务: 活动上传失败: HTTP {res.status_code} {res_json if res_json else res.text[:200]}")
-        except Exception as e:
-            if activity_id == 'MjU=':
-                self.log(f"家乡打卡 - 上传异常: {e}")
-            else:
-                self.log(f"云盘任务: 活动上传异常: {e}")
-        return False
-
-    def wait_cloud_lottery_times_cloud(self, activity_id, wait_seconds=8):
-        headers = self.build_cloud_lottery_headers()
-        if not headers:
-            return None
-        for _ in range(wait_seconds):
-            time.sleep(1)
-            try:
-                res = self.query_cloud_lottery_times_cloud(activity_id, headers)
-                if isinstance(res, dict) and str(res.get('meta', {}).get('code')) == '200' and self.get_cloud_lottery_draw_count(res) > 0:
-                    return res
-            except Exception:
-                pass
-        return getattr(self.cloudDisk, 'lotteryTimesResult', None)
+        return []
 
     def get_cloud_lottery_activity_id_cloud(self):
         if getattr(self.cloudDisk, 'lotteryActivityId', None):
             return self.cloudDisk.lotteryActivityId
-        headers = self.build_cloud_lottery_headers()
+        headers = self.build_cloud_lottery_headers(CLOUD_SPEED_ACTIVITY_ID)
         if not headers:
             return None
-        custom_id = os.environ.get("UNICOM_CLOUD_LOTTERY_ACTIVITY_ID", "").strip()
-        activity_id = custom_id or "MjU="
+        activity_id = os.environ.get("UNICOM_CLOUD_LOTTERY_ACTIVITY_ID", "").strip() or CLOUD_SPEED_ACTIVITY_ID
         try:
-            check_headers = dict(headers)
-            check_headers['requestTime'] = str(int(time.time() * 1000))
-            res = self.session.get(self.cloudDiskUrls['lottery_times'], params={"activityId": activity_id}, headers=check_headers, timeout=10).json()
+            res = self.query_cloud_lottery_times_cloud(activity_id, headers)
             meta_code = str(res.get('meta', {}).get('code'))
-            if meta_code in ('200', '90003603'):
+            if meta_code == '200':
                 self.cloudDisk.lotteryActivityId = activity_id
                 self.cloudDisk.lotteryTimesResult = res
-                self.log("云盘任务: 开始执行抽奖活动")
+                self.log("云盘任务: 开始执行测速抽奖活动")
                 return activity_id
-            self.log(f"云盘任务: 抽奖活动[{activity_id}] 无效: {res}")
+            self.log(f"云盘任务: 测速抽奖活动[{activity_id}] 无效: {res}")
         except Exception as e:
-            self.log(f"云盘任务: 查询抽奖活动[{activity_id}]失败: {e}")
+            self.log(f"云盘任务: 查询测速抽奖活动[{activity_id}]失败: {e}")
         return None
 
+    def cloud_speed_post(self, url_name, payload, headers=None):
+        use_headers = dict(headers or self.build_cloud_lottery_headers())
+        use_headers['requestTime'] = str(int(time.time() * 1000))
+        return self.session.post(self.cloudDiskUrls[url_name], json=payload, headers=use_headers, timeout=10).json()
+
+    def get_cloud_speed_mobile(self):
+        return str(getattr(self, 'account_mobile', '') or getattr(self, 'mobile', '') or '').strip()
+
+    def get_cloud_speed_team_status(self, activity_id, headers):
+        res = self.cloud_speed_post('speed_team_member', {"activityId": activity_id}, headers)
+        if str(res.get('meta', {}).get('code')) != '200':
+            return False, ""
+        result = res.get('result') or {}
+        return bool(result.get('isInTeam')), str(result.get('teamId') or '')
+
+    def create_cloud_speed_team(self, activity_id, headers):
+        mobile = self.get_cloud_speed_mobile()
+        team_name = mobile[-4:] if mobile else str(self.index)
+        res = self.cloud_speed_post('speed_team_create', {"activityId": activity_id, "teamName": team_name}, headers)
+        if str(res.get('meta', {}).get('code')) != '200':
+            self.log(f"云盘任务: 测速活动创建战队失败: {res}")
+            return ""
+        time.sleep(1)
+        in_team, team_id = self.get_cloud_speed_team_status(activity_id, headers)
+        if in_team and team_id:
+            self.log(f"云盘任务: 测速活动已创建战队 {team_id}")
+            return team_id
+        self.log("云盘任务: 测速活动创建战队后未获取到战队ID")
+        return ""
+
+    def generate_cloud_speed_invite(self, activity_id, team_id, headers):
+        mobile = self.get_cloud_speed_mobile()
+        if not team_id or not mobile:
+            return ""
+        body = {"activityId": activity_id, "teamId": int(team_id) if str(team_id).isdigit() else team_id, "inviterUserId": mobile}
+        res = self.cloud_speed_post('speed_team_token', body, headers)
+        token = res.get('result') if isinstance(res, dict) else ""
+        if str(res.get('meta', {}).get('code')) == '200' and token:
+            CLOUD_SPEED_TEAM_CONTEXT.clear()
+            CLOUD_SPEED_TEAM_CONTEXT.update({"activityId": activity_id, "teamId": str(team_id), "signToken": token, "inviterUserId": mobile})
+            self.log(f"云盘任务: 测速活动战队邀请已生成")
+            return token
+        self.log(f"云盘任务: 测速活动生成邀请失败: {res}")
+        return ""
+
+    def join_cloud_speed_team(self, activity_id, headers):
+        invite = CLOUD_SPEED_TEAM_CONTEXT if CLOUD_SPEED_TEAM_CONTEXT.get("activityId") == activity_id else {}
+        team_id = str(invite.get("teamId") or "")
+        sign_token = invite.get("signToken") or ""
+        mobile = self.get_cloud_speed_mobile()
+        if not team_id or not sign_token or not mobile:
+            return False
+        join_headers = self.build_cloud_lottery_headers(activity_id, sign_token)
+        res = self.cloud_speed_post('speed_team_join', {
+            "activityId": activity_id,
+            "teamId": team_id,
+            "currentUserId": mobile,
+            "signToken": sign_token,
+        }, join_headers)
+        if str(res.get('meta', {}).get('code')) == '200':
+            self.log(f"云盘任务: 测速活动已加入战队 {team_id}")
+            return True
+        self.log(f"云盘任务: 测速活动加入战队失败: {res}")
+        return False
+
+    def activate_cloud_speed_task(self, activity_id, headers):
+        try:
+            res = self.cloud_speed_post('speed_task_activate', {"activityId": activity_id}, headers)
+            if str(res.get('meta', {}).get('code')) == '200':
+                self.log("云盘任务: 测速活动任务已激活")
+                return True
+            self.log(f"云盘任务: 测速活动任务激活失败: {res}")
+        except Exception as e:
+            self.log(f"云盘任务: 测速活动任务激活异常: {e}")
+        return False
+
+    def ensure_cloud_speed_team_cloud(self, activity_id, headers):
+        in_team, team_id = self.get_cloud_speed_team_status(activity_id, headers)
+        if in_team and team_id:
+            self.log(f"云盘任务: 测速活动已在战队 {team_id}")
+            if self.index == 1 or not CLOUD_SPEED_TEAM_CONTEXT.get("signToken"):
+                self.generate_cloud_speed_invite(activity_id, team_id, headers)
+            return True
+        if CLOUD_SPEED_TEAM_CONTEXT.get("activityId") == activity_id:
+            return self.join_cloud_speed_team(activity_id, headers)
+        team_id = self.create_cloud_speed_team(activity_id, headers)
+        if not team_id:
+            return False
+        self.generate_cloud_speed_invite(activity_id, team_id, headers)
+        return True
+
     def draw_lottery_cloud(self):
-        headers = self.build_cloud_lottery_headers()
-        if not headers:
-            return
         activity_id = self.get_cloud_lottery_activity_id_cloud()
         if not activity_id:
-            self.log("云盘任务: 未找到有效抽奖活动")
+            self.log("云盘任务: 未找到有效测速抽奖活动")
+            return
+        headers = self.build_cloud_lottery_headers(activity_id)
+        if not headers:
             return
         try:
-            times_res = getattr(self.cloudDisk, 'lotteryTimesResult', None)
-            if not isinstance(times_res, dict):
-                times_res = self.query_cloud_lottery_times_cloud(activity_id, headers)
-            times_code = str(times_res.get('meta', {}).get('code'))
-            draw_count = self.get_cloud_lottery_draw_count(times_res) if times_code == '200' else 0
-            if times_code == '90003603' or draw_count <= 0:
-                if self.ensure_cloud_lottery_activity_open_cloud(activity_id) and self.do_activity_upload_cloud(activity_id):
-                    refreshed = self.wait_cloud_lottery_times_cloud(activity_id)
-                    if isinstance(refreshed, dict):
-                        times_res = refreshed
-                        times_code = str(times_res.get('meta', {}).get('code'))
-                        draw_count = self.get_cloud_lottery_draw_count(times_res) if times_code == '200' else 0
-            if activity_id == 'MjU=':
-                self.query_cloud_lottery_record_cloud(activity_id)
-            if times_code == '90003603':
-                if activity_id == 'MjU=':
-                    self.log("家乡打卡 - 抽奖失败：没有抽奖机会")
-                else:
-                    self.log(f"云盘任务: 抽奖活动[{activity_id}] 活动上传后仍未获得抽奖次数")
+            if not self.ensure_cloud_speed_team_cloud(activity_id, headers):
+                self.log("云盘任务: 测速活动战队准备失败，跳过抽奖")
                 return
+            self.activate_cloud_speed_task(activity_id, headers)
+            times_res = self.query_cloud_lottery_times_cloud(activity_id, headers)
+            times_code = str(times_res.get('meta', {}).get('code')) if isinstance(times_res, dict) else ''
             if times_code != '200':
-                self.log(f"云盘任务: 查询抽奖次数失败: {times_res}")
+                self.log(f"云盘任务: 查询测速抽奖次数失败: {times_res}")
                 return
+            draw_count = self.get_cloud_lottery_draw_count(times_res)
             if draw_count <= 0:
-                if activity_id == 'MjU=':
-                    self.log("家乡打卡 - 抽奖失败：没有抽奖机会")
-                else:
-                    self.log(f"云盘任务: 抽奖活动[{activity_id}] 当前无抽奖次数")
+                self.log("云盘任务: 测速抽奖当前无抽奖次数")
                 return
             for _ in range(draw_count):
                 draw_headers = dict(headers)
                 draw_headers['requestTime'] = str(int(time.time() * 1000))
                 res = self.session.post(self.cloudDiskUrls['lottery'], json={"activityId": activity_id}, headers=draw_headers, timeout=10).json()
-                if res.get('meta', {}).get('code') == '92000017':
-                    self.log("云盘任务: 转盘已抽奖")
+                if str(res.get('meta', {}).get('code')) == '92000017':
+                    self.log("云盘任务: 测速抽奖今日已抽")
                     return
                 if 'result' in res:
-                    if activity_id == 'MjU=':
-                        self.log(f"家乡打卡 - 抽奖结果：{res['result'].get('prizeName', '')}", notify=True)
-                    else:
-                        self.log(f"云盘任务: 转盘获得: {res['result'].get('prizeName', '')}", notify=True)
+                    prize_name = res['result'].get('prizeName', '')
+                    self.log(f"云盘任务: 测速抽奖获得: {prize_name}", notify=self.is_cloud_lottery_notify_prize(prize_name))
                     continue
-                self.log(f"云盘任务: 抽奖无结果: {res}")
+                self.log(f"云盘任务: 测速抽奖无结果: {res}")
+            self.query_cloud_lottery_record_cloud(activity_id)
         except Exception as e:
-            self.log(f"云盘任务: 抽奖失败: {e}")
+            self.log(f"云盘任务: 测速抽奖失败: {e}")
 
     def get_secret_key_cloud(self):
         if getattr(self.cloudDisk, 'secretKey', None):
@@ -4623,6 +4408,526 @@ class UserService:
         else:
             self.log(f"天天领现金: 查询余额失败: {data.get('msg')}")
 
+    def ttxc_headers(self, auth=True, ecs=False):
+        headers = {
+            "user-agent": COMMON_CONSTANTS["MARKET_H5_UA"],
+            "content-type": "application/json",
+            "accept": "*/*",
+            "origin": "https://epay.10010.com",
+            "referer": TTXC_REFERER,
+            "x-requested-with": "com.sinovatech.unicom.ui",
+        }
+        if auth and getattr(self, "ttxc_token", ""):
+            headers["authorization"] = self.ttxc_token
+        if ecs and self.ecs_token:
+            headers["Cookie"] = f"ecs_token={self.ecs_token}"
+        return headers
+
+    def ttxc_post(self, path, payload=None, auth=True, with_user=True, ecs=False):
+        data = dict(payload or {})
+        if with_user:
+            data.setdefault("userId", getattr(self, "ttxc_user_id", ""))
+        data.setdefault("channel", TTXC_CHANNEL)
+        res = self.request("post", f"{TTXC_BASE_URL}{path}", json=data, headers=self.ttxc_headers(auth=auth, ecs=ecs), timeout=10)
+        if not res:
+            return {}
+        try:
+            return res.json()
+        except Exception:
+            return {}
+
+    def ttxc_init_ttgame(self):
+        self.session.cookies.set("ecs_token", self.ecs_token)
+        url = f"{TTXC_APP_BASE_URL}/v1/login/ttGame?channel={TTXC_CHANNEL}&rptId="
+        data = {}
+        for attempt in range(1, 4):
+            data = self.ttxc_json(self.request("post", url, json={"unicomTokenId": self.unicomTokenId}, headers=self.ttxc_headers(auth=False, ecs=True), timeout=10))
+            if data.get("code") == "0000":
+                return True
+            if data.get("code") == "4003" and data.get("data") and self.ttxc_finish_woauth(data.get("data")):
+                data = self.ttxc_json(self.request("post", url, json={"unicomTokenId": self.unicomTokenId}, headers=self.ttxc_headers(auth=False, ecs=True), timeout=10))
+                if data.get("code") == "0000":
+                    return True
+            if attempt < 3:
+                time.sleep(2)
+        self.log(f"通通乡村: 初始化失败[{data.get('code')}]: {data.get('msg', '')}")
+        return False
+
+    def ttxc_json(self, res):
+        if not res:
+            return {}
+        try:
+            return res.json()
+        except Exception:
+            return {}
+
+    def ttxc_finish_woauth(self, login_url):
+        headers = {
+            "Referer": "https://epay.10010.com/",
+            "User-Agent": COMMON_CONSTANTS["MARKET_H5_UA"],
+        }
+        res = self.request("get", login_url, headers=headers, timeout=10)
+        if not res:
+            return False
+        match = re.search(r'var token = "([^"]+)"', res.text or "")
+        if not match:
+            return False
+        next_url = (
+            "https://epay.10010.com/woauth2/after-collected-device-digest"
+            f"?deviceDigestTraceId=&deviceDigestTokenId=&token={quote(match.group(1))}&source=app_sjyyt"
+        )
+        referer = login_url
+        for _ in range(6):
+            res = self.request("get", next_url, headers={"Referer": referer, "User-Agent": COMMON_CONSTANTS["MARKET_H5_UA"]}, allow_redirects=False, timeout=10)
+            if not res:
+                return False
+            location = res.headers.get("Location", "")
+            if not location:
+                return res.status_code == 200
+            referer = next_url
+            next_url = location
+        return False
+
+    def ttxc_login(self, update_nick=True):
+        if not self.ecs_token:
+            self.onLine()
+            if not self.ecs_token:
+                self.log("通通乡村: 缺少 ecs_token，跳过")
+                return False
+        if not self.ttxc_init_ttgame():
+            return False
+        data = self.ttxc_post("/user/v1/login", auth=False, with_user=False, ecs=True)
+        if data.get("code") != 0:
+            self.log(f"通通乡村: 登录失败[{data.get('code')}]: {data.get('msg', '')}")
+            return False
+        user = data.get("data") or {}
+        self.ttxc_user_id = user.get("userId", "")
+        self.ttxc_token = data.get("token", "")
+        self.ttxc_charge_level = user.get("chargeLevel") or {}
+        self.ttxc_newbie_list = user.get("newbieList")
+        self.ttxc_nick_name = user.get("nickName") or ""
+        if not self.ttxc_user_id or not self.ttxc_token:
+            self.log("通通乡村: 登录响应缺少 userId/token")
+            return False
+        carbon = self.ttxc_charge_level.get("carbonNum", 0)
+        eco = self.ttxc_charge_level.get("ecologyAmount", 0)
+        self.log(f"通通乡村: 登录成功，碳能量{carbon}g，生态值{eco}", notify=True)
+        if update_nick and not self.ttxc_nick_name and self.ttxc_newbie_done():
+            self.ttxc_update_nick()
+        return True
+
+    def ttxc_update_nick(self):
+        nick = (self.account_mobile or self.mobile or "")[-4:] or str(random.randint(1000, 9999))
+        data = self.ttxc_post("/user/v1/updateNick", {"nickName": nick})
+        if data.get("code") == 0:
+            self.ttxc_nick_name = nick
+            self.log(f"通通乡村: 已设置昵称 {nick}")
+            return True
+        self.log(f"通通乡村: 设置昵称失败[{data.get('code')}]: {data.get('msg', '')}")
+        return False
+
+    def ttxc_newbie_done(self):
+        steps = getattr(self, "ttxc_newbie_list", None)
+        return not isinstance(steps, list) or all(step in steps for step in TTXC_NEWBIE_STEPS)
+
+    def ttxc_newbie_mark(self, step):
+        target = []
+        for item in TTXC_NEWBIE_STEPS:
+            target.append(item)
+            if item == step:
+                break
+        data = self.ttxc_post("/user/v1/newbie", {"newbieList": target, "type": 1})
+        if data.get("code") == 0:
+            self.ttxc_newbie_list = data.get("data") or target
+            return True
+        self.log(f"通通乡村: 新手步骤{step}失败[{data.get('code')}]: {data.get('msg', '')}")
+        return False
+
+    def ttxc_newbie_need(self, step):
+        steps = getattr(self, "ttxc_newbie_list", None)
+        return isinstance(steps, list) and step not in steps
+
+    def ttxc_first_newbie_land(self, lands=None):
+        lands = lands if lands is not None else self.ttxc_get_lands()
+        active = next((land for land in lands if land.get("status") in [2, 3] and (land.get("plant") or {}).get("plantId")), None)
+        if active:
+            return active
+        return next((land for land in lands if land.get("status") == 1), None)
+
+    def ttxc_newbie_charge_land(self):
+        lands = self.ttxc_get_lands()
+        active = [land for land in lands if land.get("status") == 3 and (land.get("plant") or {}).get("plantId")]
+        return next((land for land in active if str((land.get("plant") or {}).get("curLevel")) in ["0", "1"]), None) or (active[0] if active else None)
+
+    def ttxc_harvest_land(self, land, newbie=False):
+        if not land:
+            return None
+        plant = land.get("plant") or {}
+        plant_id = plant.get("plantId")
+        land_index = land.get("landIndex")
+        if not plant_id or not land_index:
+            return None
+        if land.get("status") == 2 and TTXC_HARVEST_WAIT_SECONDS > 0:
+            time.sleep(TTXC_HARVEST_WAIT_SECONDS)
+        path = "/plant/v1/newHarvest" if newbie else "/plant/v1/harvest"
+        data = self.ttxc_post(path, {"landIndex": land_index, "plantId": plant_id})
+        if data.get("code") == 0:
+            self.log(f"通通乡村: 地块{land_index}收获成功")
+            return data.get("data") or {"landIndex": land_index, "status": 1, "plant": None}
+        self.log(f"通通乡村: 地块{land_index}收获失败[{data.get('code')}]: {data.get('msg', '')}")
+        return None
+
+    def ttxc_newbie_task(self):
+        if self.ttxc_newbie_done():
+            return False
+        need_farm = any(self.ttxc_newbie_need(step) for step in ["G03", "G03_2", "G04", "G05", "G09", "G10"])
+        lands = self.ttxc_get_lands() if need_farm else []
+        plant_id = ""
+        current = self.ttxc_first_newbie_land(lands) if need_farm else None
+        if need_farm:
+            self.ttxc_post("/client/v1/plant/type", {})
+            plant_id = self.ttxc_get_plant_id()
+            if not plant_id:
+                self.log("通通乡村: 新手任务缺少作物ID")
+                return False
+        if self.ttxc_newbie_need("G03") and not self.ttxc_newbie_mark("G03"):
+            return False
+        if self.ttxc_newbie_need("G03_2"):
+            has_crop = current and current.get("status") in [2, 3] and (current.get("plant") or {}).get("plantId")
+            if not has_crop:
+                data = self.ttxc_post("/client/v1/plant/buy", {"plantId": plant_id, "gameCfgId": ""})
+                if data.get("code") != 0:
+                    self.log(f"通通乡村: 新手购买作物失败[{data.get('code')}]: {data.get('msg', '')}")
+                    return False
+            if not self.ttxc_newbie_mark("G03_2"):
+                return False
+        if self.ttxc_newbie_need("G04"):
+            if not current or not current.get("landIndex"):
+                self.log("通通乡村: 新手任务缺少可种植地块")
+                return False
+            if not (current.get("status") in [2, 3] and (current.get("plant") or {}).get("plantId")):
+                data = self.ttxc_post("/plant/v1/planting", {"landIndex": current.get("landIndex"), "plantId": plant_id})
+                if data.get("code") != 0:
+                    self.log(f"通通乡村: 新手种植失败[{data.get('code')}]: {data.get('msg', '')}")
+                    return False
+                current = data.get("data") or {"landIndex": current.get("landIndex"), "status": 3, "plant": {"plantId": plant_id}}
+            if not self.ttxc_newbie_mark("G04"):
+                return False
+        if self.ttxc_newbie_need("G05"):
+            current = current if current and current.get("plant") else self.ttxc_first_newbie_land()
+            current = self.ttxc_charge_land(current)
+            if not current or not self.ttxc_newbie_mark("G05"):
+                return False
+        if self.ttxc_newbie_need("G09"):
+            plant = (current or {}).get("plant") or {}
+            level = str(plant.get("curLevel") or "")
+            if not (current and current.get("status") == 3 and plant.get("plantId") and level in ["", "0", "1"]):
+                current = self.ttxc_newbie_charge_land()
+            current = self.ttxc_charge_land(current, mock=1)
+            if not current or not self.ttxc_newbie_mark("G09"):
+                return False
+        if self.ttxc_newbie_need("G10"):
+            current = current if current and current.get("plant") else self.ttxc_first_newbie_land()
+            if not self.ttxc_harvest_land(current, newbie=True) or not self.ttxc_newbie_mark("G10"):
+                return False
+        if self.ttxc_newbie_need("G11") and not self.ttxc_newbie_mark("G11"):
+            return False
+        if self.ttxc_newbie_need("G12"):
+            if not self.ttxc_nick_name and not self.ttxc_update_nick():
+                return False
+            if not self.ttxc_newbie_mark("G12"):
+                return False
+        self.log("通通乡村: 新手任务已完成")
+        return True
+
+    def ttxc_sign(self, is_query_only=False):
+        info = self.ttxc_post("/client/v1/sign/info", {})
+        code = (info.get("data") or {}).get("signinCode")
+        if not code:
+            self.log("通通乡村: 获取签到码失败")
+            return
+        user = self.ttxc_post("/client/v1/sign/user", {"code": code})
+        last_time = str((user.get("data") or {}).get("lastSigninTime") or "")
+        signed = last_time[:10] == datetime.now().strftime("%Y-%m-%d")
+        if signed:
+            self.log("通通乡村: 今日已签到", notify=True)
+            return
+        if is_query_only:
+            self.log("通通乡村: 今日未签到", notify=True)
+            return
+        data = self.ttxc_post("/client/v1/sign/signIn", {"code": code})
+        if data.get("code") == 0:
+            sign_data = data.get("data") or {}
+            keep_value = safe_int(sign_data.get("keepSigninValue") or sign_data.get("lastKeepSigninValue") or sign_data.get("totalSigninValue"))
+            award_items = (info.get("data") or {}).get("awards") or []
+            energy = 0
+            for item in award_items:
+                if item.get("awardType") == "KEEP" and safe_int(item.get("signinValue")) == keep_value:
+                    energy = safe_int(item.get("carbonEnergyAmount"))
+                    break
+            if not energy:
+                charge_level = data.get("chargeLevel") or {}
+                before = safe_int(getattr(self, "ttxc_charge_level", {}).get("carbonNum"))
+                after = safe_int(charge_level.get("carbonNum"))
+                energy = max(after - before, 0)
+            if data.get("chargeLevel"):
+                self.ttxc_charge_level = data.get("chargeLevel") or self.ttxc_charge_level
+            msg = f"通通乡村: 签到成功 +{energy}g" if energy else "通通乡村: 签到成功"
+            self.log(msg, notify=True)
+        else:
+            self.log(f"通通乡村: 签到失败[{data.get('code')}]: {data.get('msg', '')}")
+
+    def ttxc_get_tasks(self):
+        data = self.ttxc_post("/client/v1/task/list", {})
+        if data.get("code") != 0:
+            self.log(f"通通乡村: 获取任务列表失败[{data.get('code')}]: {data.get('msg', '')}")
+            return []
+        tasks = []
+        for group in data.get("data") or []:
+            for task in group.get("taskList") or []:
+                task["taskGroupName"] = group.get("taskGroupName", "")
+                tasks.append(task)
+        return tasks
+
+    def ttxc_finish_task(self, task):
+        task_id = task.get("taskCode")
+        if not task_id:
+            return False
+        data = self.ttxc_post("/client/v1/task/finish", {"taskId": task_id})
+        name = task.get("taskTitle", task_id)
+        if data.get("code") == 0:
+            reward = task.get("carbonEnergyAmount") or 0
+            self.log(f"通通乡村: 领取[{name}]成功 +{reward}g")
+            return True
+        self.log(f"通通乡村: 领取[{name}]失败[{data.get('code')}]: {data.get('msg', '')}")
+        return False
+
+    def ttxc_do_task(self, task):
+        data = self.ttxc_post("/client/v1/task/do", {"taskId": task.get("taskCode")})
+        name = task.get("taskTitle", task.get("taskCode", ""))
+        if data.get("code") == 0:
+            self.log(f"通通乡村: 已执行[{name}]")
+            return True
+        self.log(f"通通乡村: 执行[{name}]失败[{data.get('code')}]: {data.get('msg', '')}")
+        return False
+
+    def ttxc_claim_ready_tasks(self, tasks, claimed=None):
+        if claimed is None:
+            claimed = set()
+        count = 0
+        for task in tasks:
+            task_id = task.get("taskCode")
+            if task.get("taskStatus") == "UNCLA" and task_id not in claimed:
+                if self.ttxc_finish_task(task):
+                    claimed.add(task_id)
+                    count += 1
+        return count
+
+    def ttxc_do_jump_tasks(self, tasks):
+        count = 0
+        for task in tasks:
+            if task.get("taskType") == "GAME" and task.get("taskStatus") == "UNDO" and task.get("jumpUrl"):
+                if self.ttxc_do_task(task):
+                    count += 1
+                time.sleep(1)
+        return count
+
+    def ttxc_do_garbage_task(self, tasks):
+        task = next((t for t in tasks if t.get("taskType") == "GAME" and t.get("taskStatus") == "UNDO" and "垃圾分类" in t.get("taskTitle", "")), None)
+        if not task:
+            return False
+        start = self.ttxc_post("/user/v1/start", {})
+        answer_no = (start.get("data") or {}).get("answerNo")
+        if not answer_no:
+            self.log("通通乡村: 垃圾分类开始失败")
+            return False
+        time.sleep(TTXC_GARBAGE_WAIT_SECONDS)
+        data = self.ttxc_post("/user/v1/finish", {"answerNo": answer_no})
+        if data.get("code") == 0:
+            self.log("通通乡村: 垃圾分类已通关")
+            return True
+        self.log(f"通通乡村: 垃圾分类通关失败[{data.get('code')}]: {data.get('msg', '')}")
+        return False
+
+    def ttxc_prepare_newbie_energy(self, claimed=None):
+        if claimed is None:
+            claimed = set()
+        self.ttxc_sign()
+        tasks = self.ttxc_get_tasks()
+        self.ttxc_claim_ready_tasks(tasks, claimed)
+        self.ttxc_do_jump_tasks(tasks)
+        self.ttxc_do_garbage_task(tasks)
+        tasks = self.ttxc_get_tasks()
+        self.ttxc_claim_ready_tasks(tasks, claimed)
+
+    def ttxc_get_lands(self):
+        land = safe_int(getattr(self, "ttxc_charge_level", {}).get("land"), 4)
+        data = self.ttxc_post("/plant/v1/user", {"land": land})
+        if data.get("code") != 0:
+            self.log(f"通通乡村: 获取土地失败[{data.get('code')}]: {data.get('msg', '')}")
+            return []
+        return data.get("data") or []
+
+    def ttxc_get_plant_id(self):
+        data = self.ttxc_post("/client/v1/plant/page", {"itemType": "SPE", "pageNum": 1, "pageSize": 20})
+        items = (data.get("data") or {}).get("list") or []
+        return items[0].get("itemNo", "") if items else ""
+
+    def ttxc_plant_land(self, land_index, plant_id=None):
+        plant_id = plant_id or self.ttxc_get_plant_id()
+        if not plant_id or not land_index:
+            return None
+        self.ttxc_post("/client/v1/plant/buy", {"plantId": plant_id, "gameCfgId": ""})
+        data = self.ttxc_post("/plant/v1/planting", {"landIndex": land_index, "plantId": plant_id})
+        if data.get("code") == 0:
+            self.log(f"通通乡村: 已在地块{land_index}种植作物")
+            return {"landIndex": land_index, "status": 3, "plant": {"plantId": plant_id}}
+        self.log(f"通通乡村: 地块{land_index}种植失败[{data.get('code')}]: {data.get('msg', '')}")
+        return None
+
+    def ttxc_ensure_planted_lands(self, lands, needed=None):
+        active = [l for l in lands if l.get("status") in [2, 3] and (l.get("plant") or {}).get("plantId")]
+        empty = [l for l in lands if l.get("status") == 1]
+        if not empty:
+            return active
+        plant_id = self.ttxc_get_plant_id()
+        if not plant_id:
+            return active
+        for land in empty:
+            planted = self.ttxc_plant_land(land.get("landIndex"), plant_id)
+            if planted:
+                active.append(planted)
+        return active
+
+    def ttxc_charge_land(self, land, mock=None):
+        if not land:
+            return False
+        plant = land.get("plant") or {}
+        plant_id = plant.get("plantId")
+        land_index = land.get("landIndex")
+        if not plant_id or not land_index:
+            return False
+        data = self.ttxc_post("/plant/v1/charge", {"landIndex": land_index, "plantId": plant_id, "mock": mock})
+        if data.get("code") == 0:
+            self.log(f"通通乡村: 地块{land_index}充能成功")
+            result = data.get("data") or {}
+            if result and not result.get("plant"):
+                result["plant"] = plant
+            return result or land
+        self.log(f"通通乡村: 地块{land_index}充能失败[{data.get('code')}]: {data.get('msg', '')}")
+        return None
+
+    def ttxc_harvest_and_replant(self, land):
+        harvested = self.ttxc_harvest_land(land)
+        return self.ttxc_plant_land(land.get("landIndex")) if harvested and land else None
+
+    def ttxc_grow_land_to_harvest(self, land):
+        current = land
+        if current.get("status") == 2:
+            self.ttxc_harvest_and_replant(current)
+            return
+        charged = 0
+        while current.get("status") == 3 and charged < TTXC_GROW_MAX_CHARGE_PER_LAND:
+            current = self.ttxc_charge_land(current)
+            if not current:
+                return
+            charged += 1
+            if current.get("status") == 2:
+                self.ttxc_harvest_and_replant(current)
+                return
+            if charged < TTXC_GROW_MAX_CHARGE_PER_LAND:
+                time.sleep(1)
+        if current.get("status") == 3:
+            self.log(f"通通乡村: 地块{current.get('landIndex')}催熟达到上限，跳过")
+
+    def ttxc_replace_land(self, lands, updated):
+        land_index = updated.get("landIndex")
+        for i, land in enumerate(lands):
+            if land.get("landIndex") == land_index:
+                lands[i] = updated
+                return
+        lands.append(updated)
+
+    def ttxc_complete_charge_task(self, active, remaining):
+        while remaining > 0:
+            immature = [land for land in active if land.get("status") == 3 and (land.get("plant") or {}).get("plantId")]
+            if not immature:
+                self.log("通通乡村: 未成熟作物不足，提前结束10次充能补足")
+                return
+            progressed = False
+            for land in immature:
+                if remaining <= 0:
+                    return
+                result = self.ttxc_charge_land(land)
+                if result:
+                    self.ttxc_replace_land(active, result)
+                    remaining -= 1
+                    progressed = True
+                time.sleep(1)
+            if not progressed:
+                self.log("通通乡村: 充能未成功，提前结束10次充能补足")
+                return
+
+    def ttxc_farm_tasks(self, tasks):
+        charge_task = next((t for t in tasks if "10次作物充能" in t.get("taskTitle", "")), None)
+        land_task = next((t for t in tasks if "三块不同" in t.get("taskTitle", "")), None)
+        harvest_task = next((t for t in tasks if "收获一次作物" in t.get("taskTitle", "")), None)
+        if not charge_task and not land_task and not harvest_task:
+            return
+        charge_pending = charge_task if (charge_task or {}).get("taskStatus") == "UNDO" else None
+        land_pending = land_task if (land_task or {}).get("taskStatus") == "UNDO" else None
+        harvest_pending = harvest_task if (harvest_task or {}).get("taskStatus") == "UNDO" else None
+        if not charge_pending and not land_pending and not harvest_pending:
+            return
+        lands = self.ttxc_get_lands()
+        active = self.ttxc_ensure_planted_lands(lands)
+        need_land = max(safe_int((land_pending or {}).get("finishValue")) - safe_int((land_pending or {}).get("doneValue")), 0)
+        if harvest_pending and not charge_pending and not land_pending:
+            for land in active:
+                if land.get("status") == 2:
+                    self.ttxc_harvest_and_replant(land)
+        if not active:
+            self.log("通通乡村: 没有可充能作物")
+            return
+        charged = 0
+        for i, land in enumerate(active[:need_land]):
+            result = self.ttxc_charge_land(land)
+            if result:
+                active[i] = result
+                charged += 1
+                time.sleep(1)
+        need_charge = max(safe_int((charge_pending or {}).get("finishValue")) - safe_int((charge_pending or {}).get("doneValue")) - charged, 0)
+        self.ttxc_complete_charge_task(active, need_charge)
+        for land in active:
+            self.ttxc_grow_land_to_harvest(land)
+
+    def ttxc_task(self, is_query_only=False):
+        self.log("==== 通通乡村 ====")
+        try:
+            if not self.ttxc_login(update_nick=not is_query_only):
+                return
+            claimed = set()
+            if not is_query_only:
+                if not self.ttxc_newbie_done():
+                    self.ttxc_prepare_newbie_energy(claimed)
+                if not self.ttxc_newbie_done() and not self.ttxc_newbie_task():
+                    return
+            self.ttxc_sign(is_query_only=is_query_only)
+            tasks = self.ttxc_get_tasks()
+            if is_query_only:
+                todo = sum(1 for t in tasks if t.get("taskStatus") == "UNDO")
+                claim = sum(1 for t in tasks if t.get("taskStatus") == "UNCLA")
+                self.log(f"通通乡村: 待做{todo}个，可领取{claim}个", notify=True)
+                return
+            self.ttxc_claim_ready_tasks(tasks, claimed)
+            self.ttxc_do_jump_tasks(tasks)
+            self.ttxc_do_garbage_task(tasks)
+            self.ttxc_farm_tasks(tasks)
+            tasks = self.ttxc_get_tasks()
+            self.ttxc_claim_ready_tasks(tasks, claimed)
+        except Exception as e:
+            self.log(f"通通乡村异常: {e}")
+
     def aiting_get_aes(self, data, key):
         iv_str = "16-Bytes--String"
         key_bytes = key[:16].encode('utf-8')
@@ -5115,10 +5420,19 @@ class UserService:
             url2 = "https://uphone.wostore.cn/h5api/activity-service/user/login"
             body2 = {
                 "identityType": "cloudPhoneLogin", "code": first_token, "channelId": "ST-Zujian001-gs",
-                "activityId": "Lottery_251201", "device": "device"
+                "activityId": WOSTORE_CLOUD_ACTIVITY_CODE, "device": "device"
             }
             headers2 = {"Origin": "https://uphone.wostore.cn", "X-USR-TOKEN": first_token}
-            res2 = self.session.post(url2, json=body2, headers=headers2, timeout=15).json()
+            res2 = {}
+            for attempt in range(1, WOSTORE_CLOUD_RETRIES + 1):
+                try:
+                    res2 = self.session.post(url2, json=body2, headers=headers2, timeout=WOSTORE_CLOUD_TIMEOUT).json()
+                    break
+                except Exception as e:
+                    if attempt >= WOSTORE_CLOUD_RETRIES:
+                        raise
+                    self.log(f"沃云手机: 登录第二步超时重试({attempt}/{WOSTORE_CLOUD_RETRIES}) - {e}")
+                    time.sleep(2)
             if str(res2.get("code")) == "200":
                 user_token = res2.get("data", {}).get("user_token")
                 return {"firstToken": first_token, "user_token": user_token}
@@ -5145,7 +5459,7 @@ class UserService:
     def wostore_cloud_task_list(self, user_token):
         try:
             url = "https://uphone.wostore.cn/h5api/activity-service/user/task/list"
-            body = {"activityCode": "Lottery_251201"}
+            body = {"activityCode": WOSTORE_CLOUD_ACTIVITY_CODE}
             headers = {"X-USR-TOKEN": user_token}
             self.session.post(url, json=body, headers=headers)
         except Exception:
@@ -5154,7 +5468,7 @@ class UserService:
     def wostore_cloud_get_chance(self, user_token, task_code):
         try:
             url = "https://uphone.wostore.cn/h5api/activity-service/user/task/raffle/get"
-            body = {"activityCode": "Lottery_251201", "taskCode": task_code}
+            body = {"activityCode": WOSTORE_CLOUD_ACTIVITY_CODE, "taskCode": task_code}
             headers = {"X-USR-TOKEN": user_token}
             self.session.post(url, json=body, headers=headers)
         except Exception:
@@ -5163,7 +5477,7 @@ class UserService:
     def wostore_cloud_draw(self, user_token):
         try:
             url = "https://uphone.wostore.cn/h5api/activity-service/lottery"
-            body = {"activityCode": "Lottery_251201"}
+            body = {"activityCode": WOSTORE_CLOUD_ACTIVITY_CODE}
             headers = {"X-USR-TOKEN": user_token}
             res = self.session.post(url, json=body, headers=headers).json()
             if res.get("code") == 200:
@@ -5833,20 +6147,32 @@ class UserService:
                 "User-Agent": COMMON_CONSTANTS["UA"],
             }
             res = self.session.get(page_url, params=params, headers=headers, timeout=15)
-            cookies = res.cookies.get_dict()
-            act_ticket = cookies.get('ticket', '')
+            act_ticket = res.cookies.get('ticket', '')
+            if not act_ticket:
+                for hist_resp in getattr(res, 'history', []):
+                    ck = hist_resp.cookies.get('ticket', '')
+                    if ck:
+                        act_ticket = ck
+                        break
+                    sc = hist_resp.headers.get('Set-Cookie', '')
+                    m = re.search(r'ticket=([^;,\s]+)', sc)
+                    if m:
+                        act_ticket = m.group(1)
+                        break
+            if not act_ticket:
+                act_ticket = self.session.cookies.get('ticket', domain='') or self.session.cookies.get('ticket', '')
             if not act_ticket:
                 cookie_header = res.headers.get('Set-Cookie', '')
-                m = re.search(r'ticket=([^;]+)', cookie_header)
+                m = re.search(r'ticket=([^;,\s]+)', cookie_header)
                 if m:
                     act_ticket = m.group(1)
             if not act_ticket:
-                m = re.search(r'ticket=([a-f0-9]+)', res.text)
+                m = re.search(r'ticket[=:]\s*["\']?([a-zA-Z0-9_\-]{8,})', res.text)
                 if m:
                     act_ticket = m.group(1)
             if not act_ticket:
-                self.log("安徽超级星期五: 未获取到活动ticket")
-                return None
+                self.log(f"安徽超级星期五: 页面未返回独立ticket，使用入口ticket兜底")
+                act_ticket = ticket
             self.log(f"安徽超级星期五: 获取活动ticket成功 ({act_ticket[:12]}...)")
             return {
                 "ticket": act_ticket,
@@ -6419,6 +6745,11 @@ class UserService:
                         self.ttlxj_task(is_query_only=True)
                     except Exception as e:
                         self.log(f"天天领现金查询异常: {e}")
+                if globalConfig.get("enable_ttxc", True):
+                    try:
+                        self.ttxc_task(is_query_only=True)
+                    except Exception as e:
+                        self.log(f"通通乡村查询异常: {e}")
                 if globalConfig.get("enable_market", True):
                     try:
                         self.market_task(is_query_only=True)
@@ -6471,6 +6802,11 @@ class UserService:
             self.ttlxj_task()
         else:
             self.log("==== 天天领现金 ====")
+            self.log("⏭️ 已被总开关关闭，跳过")
+        if globalConfig.get("enable_ttxc", True):
+            self.ttxc_task()
+        else:
+            self.log("==== 通通乡村 ====")
             self.log("⏭️ 已被总开关关闭，跳过")
         if globalConfig.get("enable_market", True):
             self.market_task()
@@ -6542,6 +6878,9 @@ def cross_view_security_share_keys(users):
             u.log(f"联通助理-分享AI助手对话：互看后领奖异常 {e}")
 
 def do_notify(users):
+    if not globalConfig.get("enable_notify", True):
+        print("推送通知已关闭")
+        return
     notify_content = []
     for u in users:
         if u.notify_logs:
@@ -6563,7 +6902,7 @@ def do_notify(users):
 
 def main():
     global GRAB_AMOUNT
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [Script Start] chinaUnicom Python v1.0.7")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] [Script Start] chinaUnicom Python v1.0.9")
     cookies = os.environ.get("chinaUnicomCookie", "")
     if not cookies:
         print("[-] 未在环境变量 chinaUnicomCookie 中找到配置")
@@ -6613,6 +6952,7 @@ def main():
         ("enable_sign",     "首页签到"),
         ("enable_ltzf",     "联通祝福"),
         ("enable_ttlxj",    "天天领现金"),
+        ("enable_ttxc",     "通通乡村"),
         ("enable_market",   "权益超市"),
         ("enable_woread",   "联通阅读"),
         ("enable_aiting",   "联通爱听"),
@@ -6646,6 +6986,7 @@ def main():
             print(f"  └─ 会员中心: {'开启' if mc.get('run_member_center', True) else '关闭'}")
             print(f"  └─ 抽奖: {'开启' if mc.get('run_draw', True) else '关闭'}")
             print(f"  └─ 自动领奖: {'开启' if mc.get('run_claim', False) else '关闭'}")
+    print(f"推送通知设置为: {'开启' if globalConfig.get('enable_notify', True) else '关闭'}")
     print(f"设备ID刷新: {'强制刷新' if globalConfig.get('refresh_device_id', False) else '使用缓存'}")
     print("-" * 36)
     print("")
