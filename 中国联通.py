@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-中国联通 Python 版 v1.1.1
+中国联通 Python 版 v1.1.2
 
 包含以下功能:
 1. 首页签到 (话费红包/积分)
 2. 联通祝福 (各类抽奖)
 3. 天天领现金 (每日打卡/立减金)
-4. 权益超市 (任务/抽奖/浇水/领奖/全局库存缓存)
+4. 权益超市 (任务/抽奖/领奖/全局库存缓存)
 5. 安全管家 (日常任务/积分领取)
-6. 联通云盘 (乘风活动/重复清理)
+6. 联通云盘 (家乡打卡/重复清理)
 7. 联通阅读 (自动获取书籍/心跳阅读/抽奖/查红包)
 8. 联通爱听 (JF积分任务/自动签到/任务完成/积分查询)
 9. 沃云手机 (签到/任务/抽奖)
@@ -16,10 +16,18 @@
 
 更新说明:
 
+### 20260711
+v1.1.2:
+- 沃云手机：抽奖改用专用活动码，修复抽奖次数恒为0。
+- 联通云盘：新增家乡打卡（归属地识别/上传/抽奖/自动清理）。
+- 权益超市：移除已下架的浇水任务。
+- 联通云盘：移除已下架的乘风活动。
+
 ### 20260609
 v1.1.1:
 - 沃云手机：更新积分抽奖逻辑，兼容商品列表响应并避免重复执行。
 - 联通云盘：乘风活动每日重新制作，复用历史作品人脸FID生成芒果视频。
+- 联通云盘：自动领取云盘会员试用。
 - 联通云盘：优化芒果权益领取后的延迟重试。
 - 联通云盘：修复抽奖次数查询与自动抽奖请求头。
 
@@ -28,13 +36,6 @@ v1.1.0:
 - 沃云手机：重构任务模块，升级全新接口并支持最新积分抽奖与时长获取。
 - 沃云手机：统一任务日志输出，减少重复任务列表打印。
 - 联通爱听：重构 JF 积分任务中心链路，支持签到、任务完成与积分查询，并优化接口响应日志展示。
-
-### 20260430
-v1.0.9:
-- 云盘：新增测速抽奖与多账号组队。
-- 云盘：新增抽奖记录查询，优化推送内容。
-- 云盘：移除过期拼图、家乡活动。
-- 推送：新增通知开关。
 
 配置说明:
 1. 账号变量 (chinaUnicomCookie):
@@ -89,7 +90,7 @@ from requests.packages.urllib3.util.retry import Retry
 from Crypto.Cipher import AES, PKCS1_v1_5
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad, unpad
-SCRIPT_VERSION = "v1.1.1"
+SCRIPT_VERSION = "v1.1.2"
 # ========================================
 # 全局配置 (globalConfig)
 # true=开启, false=关闭
@@ -116,7 +117,6 @@ globalConfig = {
 
     # --- 🛒 权益超市内部细分开关 (按需修改到这里) ---
     "market_config": {
-        "run_water": True,        # False = 关闭浇水
         "run_task": True,         # False = 关闭做任务(浏览/分享)
         "run_member_center": True, # False = 关闭浏览会员中心得积分
         "run_draw": True,         # True  = 开启抽奖
@@ -181,18 +181,6 @@ YUNNAN_LIFE_TASKS = [
     {"taskName": "每日签到", "taskCode": "DAILY_SIGN"},
     {"taskName": "浏览年终大回馈,好礼多多", "taskCode": "BROWSE_5TOWNS"},
 ]
-YPHD_ACTIVITY_ID = "Mjg="
-YPHD_SECRET_KEY = "s8Hf3LqP9xN2vM5bR7tY1wZ4cA6eG0K"
-YPHD_MOVE_FILE_FID = "pNKsm_lDq4EJWsx1rFMP/uVX7f1Gbu4K4uDaFJepfssdrGui4u/poSDp/vKG21xEIiBk//"
-YPHD_MOVE_FILE_NAME = "乘风2026精彩时刻-雨爱.mp4"
-YPHD_MGTV_BASE = "https://mgcact.api.mgtv.com"
-YPHD_MGTV_TEMPLATE_ID = "2053018128116371456"
-YPHD_MGTV_IMG_FID = os.environ.get("UNICOM_YPHD_MGTV_IMG_FID", "").strip()
-YPHD_MEMBER_SKU_CODE = "S251222T1F1M3702758"
-YPHD_MEMBER_ACTIVITY_CODE = "7IO6ren5HVMw3ouGRTepcSoFBM0r86ZGs9+Fjv6Xjv0="
-YPHD_MEMBER_TOUCHPOINT = "300300010005"
-YPHD_MEMBER_PHONE_KEY = "yEKmse436lnvTsle"
-YPHD_MEMBER_PHONE_IV = "wNSOYIB1k1DjY5lA"
 TTXC_BASE_URL = "https://epay.10010.com/cu-ca-game-front"
 TTXC_APP_BASE_URL = "https://epay.10010.com/cu-ca-app-front"
 TTXC_CHANNEL = "225"
@@ -211,11 +199,27 @@ WOSTORE_CLOUD_SIGN_CODE = os.environ.get("UNICOM_WOSTORE_SIGN_CODE", "Points_Sig
 WOSTORE_CLOUD_LOGIN_ACTIVITY_ID = os.environ.get("UNICOM_WOSTORE_LOGIN_ACTIVITY_ID", "HD2026033000125")
 WOSTORE_CLOUD_ACTIVITY_CODES = [x.strip() for x in os.environ.get("UNICOM_WOSTORE_ACTIVITY_CODES", "Points_Obtain_2507,Points_Obtain_2506,Points_Obtain_2505,Points_Obtain_2504").split(",") if x.strip()]
 WOSTORE_CLOUD_LOTTERY_CODES = [x.strip() for x in os.environ.get("UNICOM_WOSTORE_LOTTERY_CODES", "Points_Obtain_2507,Points_Obtain_2506,Points_Obtain_2505,Points_Obtain_2504").split(",") if x.strip()]
+# 云手机抽奖专用活动码 (与任务/签到码不同): activityCode=主抽奖, activityCode2=第二抽奖
+WOSTORE_LOTTERY_ACTIVITY_CODES = [x.strip() for x in os.environ.get("UNICOM_WOSTORE_LOTTERY_ACTIVITY_CODES", "HD2026062200218,Lottery_251201").split(",") if x.strip()]
 WOSTORE_POINTS_ACT_CODE = os.environ.get("UNICOM_WOSTORE_POINTS_ACT_CODE", "Points_Exchange_2507")
 WOSTORE_POINTS_GOODS_ID_10 = os.environ.get("UNICOM_WOSTORE_POINTS_GOODS_ID_10", "2026031010")
 WOSTORE_POINTS_GOODS_ID_1 = os.environ.get("UNICOM_WOSTORE_POINTS_GOODS_ID_1", "2026031001")
 WOSTORE_POINTS_STOP_PRIZE = os.environ.get("UNICOM_WOSTORE_POINTS_STOP_PRIZE", "7天体验卡")
 WOSTORE_POINTS_MAX_DRAW = max(int(os.environ.get("UNICOM_WOSTORE_POINTS_MAX_DRAW", "1") or "1"), 0)
+# 云盘家乡打卡活动 (上传图片抽奖)
+HOMETOWN_ENABLE = os.environ.get("UNICOM_HOMETOWN_ENABLE", "1").strip() not in ("0", "false", "False", "")
+HOMETOWN_MOBILE_KEY = os.environ.get("UNICOM_HOMETOWN_MOBILE_KEY", "CBWGjFHjZdhTf7h8")
+HOMETOWN_AES_IV = os.environ.get("UNICOM_HOMETOWN_AES_IV", "wNSOYIB1k1DjY5lA")
+HOMETOWN_LOTTERY_SECRET = os.environ.get("UNICOM_HOMETOWN_LOTTERY_SECRET", "s8Hf3LqP9xN2vM5bR7tY1wZ4cA6eG0K")
+HOMETOWN_OPEN_ACTIVITY_ID = os.environ.get("UNICOM_HOMETOWN_OPEN_ACTIVITY_ID", "MjU=")
+HOMETOWN_LOTTERY_ACTIVITY_ID = os.environ.get("UNICOM_HOMETOWN_LOTTERY_ACTIVITY_ID", "MzA=")
+HOMETOWN_MATERIAL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unicom_hometown_material.jpg")
+# 家乡打卡上传素材: 服务端不校验内容/大小, 内置最小合法 JPEG (1x1 白点) 即可通过
+HOMETOWN_MATERIAL_BYTES = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////"
+    "////////////////////////////////////////////////////wgALCAABAAEBAREA/8QA"
+    "FBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxD/2Q=="
+)
 WOSTORE_CLOUD_TIMEOUT = int(os.environ.get("UNICOM_WOSTORE_TIMEOUT", "15") or "15")
 WOSTORE_CLOUD_RETRIES = int(os.environ.get("UNICOM_WOSTORE_RETRIES", "3") or "3")
 UNICOM_TOKEN_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unicom_token_cache.json")
@@ -1424,21 +1428,6 @@ class UserService:
             self.log(f"Signature Generation Error: {e}")
             return {}
 
-    def generate_market_watering_signature_headers(self, user_token, xbsosjl, login_id, request_ts):
-        try:
-            message = f"td:433:tp{xbsosjl}td:334:et{login_id}td:334:et{request_ts}td:334:et"
-            signature = base64.b64encode(
-                hmac.new(
-                    str(login_id).encode('utf-8'),
-                    message.encode('utf-8'),
-                    digestmod=hashlib.sha256,
-                ).digest()
-            ).decode('utf-8')
-            return {'X-Signature': signature}
-        except Exception as e:
-            self.log(f"Market Watering Signature Error: {e}")
-            return {}
-
     def get_market_headers(self, user_token):
         return {
             'User-Agent': COMMON_CONSTANTS['MARKET_UA'],
@@ -1480,102 +1469,6 @@ class UserService:
                 self.log(f"权益超市: 等待5秒后重试...")
                 time.sleep(5)
         return None
-
-    def query_market_watering_status(self, user_token):
-        try:
-            status_url = "https://backward.bol.wo.cn/prod-api/promotion/activityTask/getMultiCycleProcess?activityId=13"
-            headers = self.get_market_headers(user_token)
-            res = self.session.get(status_url, headers=headers).json()
-            if res.get('code') == 200:
-                data = res.get('data', {})
-                triggered_time = data.get('triggeredTime', 0)
-                trigger_time = data.get('triggerTime', 0)
-                create_date = data.get('createDate', '')
-                self.log(f"权益超市-浇花当前状况: 进度 {triggered_time}/{trigger_time}", notify=True)
-                if triggered_time >= trigger_time:
-                    self.log("权益超市-浇花: 🌟 您有鲜花权益待领取! (连续浇花已满) 🌟", notify=True)
-                else:
-                    today_str = datetime.now().strftime('%Y-%m-%d')
-                    last_watered = create_date.split(' ')[0] if create_date else ''
-                    if today_str == last_watered:
-                        self.log(f"权益超市-浇花: 今日已浇水 (最后: {create_date})", notify=True)
-                    else:
-                        self.log("权益超市-浇花: 今日尚未浇水。")
-            else:
-                self.log(f"权益超市-浇花查验: 查询状态失败: {res.get('msg')}")
-        except Exception as e:
-            self.log(f"权益超市-浇花查验: 异常: {e}")
-
-    def market_watering_task(self, user_token):
-        self.log("权益超市: 浇花任务开始...")
-        try:
-            status_url = "https://backward.bol.wo.cn/prod-api/promotion/activityTask/getMultiCycleProcess?activityId=13"
-            headers = self.get_market_headers(user_token)
-            res = self.session.get(status_url, headers=headers).json()
-            if res.get('code') != 200:
-                self.log(f"权益超市-浇花: ❌ 失败: 获取状态失败: {res.get('msg')}", notify=True)
-                return
-            data = res.get('data', {})
-            before_triggered = safe_int(data.get('triggeredTime', 0))
-            trigger_time = safe_int(data.get('triggerTime', 0))
-            create_date = data.get('createDate', '')
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            last_watered = create_date.split(' ')[0] if create_date else ''
-            if today_str == last_watered:
-                self.log(f"权益超市-浇花: 今日已浇水 ({before_triggered}/{trigger_time})", notify=True)
-                return
-            if before_triggered >= trigger_time:
-                self.log(f"权益超市-浇花: 🌟 已达领奖条件 ({before_triggered}/{trigger_time})", notify=True)
-                return
-            token = user_token.replace('Bearer ', '')
-            payload = self.parse_jwt_payload(token)
-            login_id = payload.get('loginId', '')
-            if not login_id:
-                self.log("权益超市-浇花: ❌ 失败: 无法获取登录标识", notify=True)
-                return
-            xbsosjl = "Y1mN8fNYktY0"
-            request_ts = str(int(time.time() * 1000))
-            query_string = f"xbsosjl={xbsosjl}&timeVerRan={request_ts}&diceid={login_id}"
-            watering_url = f"https://backward.bol.wo.cn/prod-api/promotion/activityTaskShare/checkWatering?{query_string}"
-            req_headers = {
-                'Authorization': f"Bearer {token}",
-                'X-Signature': self.generate_market_watering_signature_headers(
-                    user_token, xbsosjl, login_id, request_ts
-                ).get('X-Signature', ''),
-                'User-Agent': COMMON_CONSTANTS['MARKET_H5_UA'],
-                'Content-Type': 'application/json',
-                'Origin': 'https://contact.bol.wo.cn',
-                'Referer': 'https://contact.bol.wo.cn/',
-                'X-Requested-With': 'com.sinovatech.unicom.ui',
-                'Accept': '*/*',
-            }
-            water_res = self.session.post(watering_url, headers=req_headers, data="{}").json()
-            if water_res.get('code') != 200:
-                self.log(f"权益超市-浇花: ❌ 失败: {water_res.get('msg')}", notify=True)
-                return
-            time.sleep(1)
-            check_res = self.session.get(status_url, headers=headers).json()
-            if check_res.get('code') != 200:
-                self.log(
-                    f"权益超市-浇花: ✅ 浇水成功 (当前进度约 {before_triggered}/{trigger_time}，APP 可能稍后刷新)",
-                    notify=True
-                )
-                return
-            check_data = check_res.get('data', {})
-            after_triggered = safe_int(check_data.get('triggeredTime', before_triggered))
-            after_trigger_time = safe_int(check_data.get('triggerTime', trigger_time)) or trigger_time
-            if after_triggered != before_triggered:
-                self.log(
-                    f"权益超市-浇花: ✅ 浇水成功 ({before_triggered}/{after_trigger_time} → {after_triggered}/{after_trigger_time})",
-                    notify=True
-                )
-                return
-            self.log(
-                f"权益超市-浇花: ✅ 浇水成功 (当前进度约 {before_triggered}/{trigger_time}，APP 可能稍后刷新)",
-                notify=True
-            )
-        except Exception as e:
-            self.log(f"权益超市-浇花: ❌ 失败: {e}", notify=True)
 
     def market_get_raffle(self, user_token):
         self.log("权益超市: 正在查询奖品池...")
@@ -2011,16 +1904,10 @@ class UserService:
         if not user_token:
             return
         if is_query_only:
-            self.query_market_watering_status(user_token)
             self.query_market_raffle_records(user_token)
             self.query_phone_recharge_records(user_token)
             return
         mc = globalConfig.get("market_config", {})
-        if mc.get("run_water", True):
-            self.market_watering_task(user_token)
-            time.sleep(2)
-        else:
-            self.log("权益超市-浇水: ⏭️ 已被总开关关闭，跳过")
         if mc.get("run_task", True):
             if hasattr(self, 'ecs_token'):
                 share_list = self.market_get_all_tasks(self.ecs_token, user_token)
@@ -2255,344 +2142,6 @@ class UserService:
             time.sleep(1)
         return deleted
 
-    def yphd_headers(self, client_id="1001000165", extra=None):
-        token = self.cloudDisk.userToken
-        headers = {
-            "X-YP-Access-Token": token,
-            "User-Agent": "Mozilla/5.0 (Linux; Android 9; 23113RKC6C Build/PQ3A.190605.10201411; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36/woapp LianTongYunPan/5.5.0 (Android 9)",
-            "clientId": client_id,
-            "X-SH-Access-Token": "",
-            "X-YP-GRAY-FLAG": "undefined",
-            "Content-Type": "application/json",
-            "X-YP-Client-Id": client_id,
-            "token": token,
-            "Origin": "https://panservice.mail.wo.cn",
-            "Referer": f"https://panservice.mail.wo.cn/h5/activitymobile/aiActor?activityId=Mjg%3D&touchpoint=300300010005&token={token}",
-        }
-        if extra:
-            headers.update(extra)
-        return headers
-
-    def yphd_post(self, path, payload=None, client_id="1001000165", extra=None):
-        res = self.session.post(f"https://panservice.mail.wo.cn{path}", json=payload or {}, headers=self.yphd_headers(client_id, extra), timeout=20)
-        try:
-            return res.json()
-        except Exception:
-            return {"text": res.text[:300]}
-
-    def yphd_get(self, path, params=None, client_id="1001000165", extra=None):
-        res = self.session.get(f"https://panservice.mail.wo.cn{path}", params=params or {}, headers=self.yphd_headers(client_id, extra), timeout=20)
-        try:
-            return res.json()
-        except Exception:
-            return {"text": res.text[:300]}
-
-    def yphd_member_phone_encrypt(self, phone):
-        cipher = AES.new(YPHD_MEMBER_PHONE_KEY.encode(), AES.MODE_CBC, YPHD_MEMBER_PHONE_IV.encode())
-        return base64.b64encode(cipher.encrypt(pad(str(phone).encode(), AES.block_size))).decode()
-
-    def yphd_member_claim(self):
-        phone = getattr(self, "account_mobile", "") or getattr(self, "mobile", "")
-        if not phone:
-            self.log("云盘会员体验: 未识别手机号，跳过")
-            return False
-        extra = {"Referer": f"https://panservice.mail.wo.cn/h5/activitymobile/experienceMember?touchpoint={YPHD_MEMBER_TOUCHPOINT}&appName=yunpan&token={self.cloudDisk.userToken}"}
-        payload = {"phone": self.yphd_member_phone_encrypt(phone)}
-        check = self.yphd_post("/activity/check/yp/members/eligibility", payload, "1001000001", extra)
-        meta = check.get("meta") or {}
-        if str(meta.get("code")) != "200":
-            self.log(f"云盘会员体验: 资格查询失败 {meta.get('message') or response_summary(check)}")
-            return False
-        state = safe_int((check.get("result") or {}).get("state"), -1)
-        if state == 1:
-            self.log("云盘会员体验: 已参与")
-            return True
-        if state != 0:
-            self.log(f"云盘会员体验: 暂不可领取 state={state}")
-            return False
-        payload.update({"skuCode": YPHD_MEMBER_SKU_CODE, "activityCode": YPHD_MEMBER_ACTIVITY_CODE, "channel": "6", "touchpoint": YPHD_MEMBER_TOUCHPOINT})
-        data = self.yphd_post("/activity/experience/yp/members", payload, "1001000001", extra)
-        meta = data.get("meta") or {}
-        order_no = (data.get("result") or {}).get("orderNo")
-        self.log(f"云盘会员体验: 领取 {meta.get('message') or response_summary(data)}" + (f" orderNo={order_no}" if order_no else ""))
-        return str(meta.get("code")) == "200"
-
-    def yphd_build_sign(self, payload):
-        raw = "&".join(f"{k}={payload[k]}" for k in sorted(payload)) + f"&secret={YPHD_SECRET_KEY}"
-        return hmac.new(YPHD_SECRET_KEY.encode(), raw.encode(), hashlib.sha256).hexdigest()
-
-    def yphd_signed_post(self, path, key, payload=None, client_id="1001000165", extra=None):
-        ts = self.yphd_post("/activity/getTimestamp", {"key": key})
-        result = ts.get("result") or {}
-        nonce = result.get("nonce")
-        timestamp = result.get("timestamp")
-        if not nonce or not timestamp:
-            self.log(f"云盘乘风活动: getTimestamp失败 {ts}")
-            return {}
-        body = dict(payload or {})
-        body.update({"activityId": YPHD_ACTIVITY_ID, "nonce": nonce, "timestamp": timestamp})
-        body["sign"] = self.yphd_build_sign(body)
-        return self.yphd_post(path, body, client_id, extra)
-
-    def yphd_task2_query(self):
-        extra = {
-            "Accept": "application/json, text/plain, */*",
-            "source-type": "woapi",
-            "requestTime": str(int(time.time() * 1000)),
-            "X-Requested-With": "com.chinaunicom.bol.cloudapp",
-            "X-YP-Client-Id": "1001000035",
-            "Referer": f"https://panservice.mail.wo.cn/h5/activitymobile/aiActor/main1?activityId=Mjg%3D&touchpoint=300300010005&token={self.cloudDisk.userToken}",
-        }
-        return self.yphd_signed_post("/activity/aiRole/task2/query", "activity:query:task2", {}, "1001000165", extra)
-
-    def yphd_ai_query(self):
-        payload = {
-            "input": "你好",
-            "modelId": 0,
-            "platform": 2,
-            "tag": 21,
-            "conversationId": "",
-            "knowledgeId": "",
-            "referFileInfo": [],
-            "messageId": "",
-            "conversationType": 0,
-            "recipient": "",
-            "async": False,
-        }
-        headers = self.yphd_headers("1001000035", {
-            "accept": "text/event-stream",
-            "X-YP-App-Version": "5.4.2",
-            "Referer": f"https://panservice.mail.wo.cn/h5/wocloud_ai_1/workFlow?needBackBtn=true&token={self.cloudDisk.userToken}",
-        })
-        try:
-            res = self.session.post("https://panservice.mail.wo.cn/wohome/ai/assistant/query", json=payload, headers=headers, stream=True, timeout=30)
-            text = ""
-            for line in res.iter_lines(decode_unicode=True):
-                if line:
-                    text += line
-                if len(text) > 500:
-                    break
-            self.log("云盘乘风活动: AI助手响应完成" if res.status_code == 200 else f"云盘乘风活动: AI助手失败 {res.status_code}")
-            return text
-        except Exception as e:
-            self.log(f"云盘乘风活动: AI助手异常 {e}")
-            return ""
-
-    def yphd_move_file(self):
-        payload = {
-            "activityId": YPHD_ACTIVITY_ID,
-            "fids": [YPHD_MOVE_FILE_FID],
-            "taskType": 10,
-            "fileType": 2,
-            "fileName": YPHD_MOVE_FILE_NAME,
-            "directoryId": 0,
-            "additionalParams": {"aiHeaderSubType": 0},
-        }
-        headers = {
-            "Access-Token": self.cloudDisk.userToken,
-            "Client-Id": "1001000165",
-            "App-Version": "yp-app/5.5.0",
-            "Referer": f"https://panservice.mail.wo.cn/h5/activitymobile/aiActor?activityId=Mjg%3D&touchpoint=300300010065&token={self.cloudDisk.userToken}",
-        }
-        res = self.yphd_post("/wohome/open/v1/ai/moveFile2Person", payload, "1001000165", headers)
-        self.log(f"云盘乘风活动: 视频转存 {res.get('meta', {}).get('message') or response_summary(res)}")
-        return res
-
-    def yphd_mgtv_headers(self):
-        return {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 9; 23113RKC6C Build/PQ3A.190605.10201411; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36/woapp LianTongYunPan/5.5.0 (Android 9)",
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-            "Origin": "https://pop.mgtv.com",
-            "Referer": "https://pop.mgtv.com/",
-        }
-
-    def yphd_mgtv_login(self):
-        data = self.yphd_post("/api-user/api/user/ticket", {}, "1001000035")
-        ticket = (data.get("result") or {}).get("ticket")
-        if not ticket:
-            self.log(f"云盘乘风活动: 芒果ticket失败 {response_summary(data)}")
-            return "", ""
-        res = self.session.get(f"{YPHD_MGTV_BASE}/api/cu/login", params={"ticket": ticket, "t": int(time.time() * 1000)}, headers=self.yphd_mgtv_headers(), timeout=20)
-        self.log("云盘乘风活动: 芒果登录成功" if res.status_code == 200 else f"云盘乘风活动: 芒果登录失败 {res.status_code}")
-        try:
-            info = res.json().get("data") or {}
-        except Exception:
-            info = {}
-        mgtv_ticket = info.get("ticket") or ticket
-        access_token = info.get("accessToken", "")
-        self.session.get(f"{YPHD_MGTV_BASE}/api/cu/popup/check", params={"ticket": mgtv_ticket}, headers=self.yphd_mgtv_headers(), timeout=20)
-        return mgtv_ticket, access_token
-
-    def yphd_mgtv_image_candidates(self):
-        candidates = []
-        seen = set()
-        def add_candidate(value, name):
-            value = str(value or "").strip()
-            if value and value not in seen:
-                seen.add(value)
-                candidates.append((value, name))
-                return True
-            return False
-        if YPHD_MGTV_IMG_FID:
-            add_candidate(YPHD_MGTV_IMG_FID, "环境图片")
-        works_payload = {"pageSize": 20, "pageNo": 1, "type": 0}
-        works_extra = {"Referer": f"https://panservice.mail.wo.cn/h5/mobile/aiProduct?token={self.cloudDisk.userToken}"}
-        works = self.yphd_post("/wohome/open/v1/ai/getNewYearWorksList", works_payload, "1001000003", works_extra)
-        for item in ((works.get("result") or {}).get("result") or []):
-            if safe_int(item.get("status")) == 1 and safe_int(item.get("type")) == 5:
-                fid = parse_qs(urlparse(str(item.get("uploadPictureUrl") or "")).query).get("fid", [""])[0]
-                add_candidate(fid, f"历史作品{item.get('id') or ''}人脸图")
-        payload = {"pageSize": 20, "pageNo": 1, "suffixList": ["jpg", "jpeg", "png"], "fileType": "1", "spaceType": 0, "sortRule": "0"}
-        extra = {"Referer": f"https://panservice.mail.wo.cn/h5/mobile/mgtv?type=1&token={self.cloudDisk.userToken}"}
-        for client_id in ("1001000003", "1001000172"):
-            data = self.yphd_post("/wohome/knowledge/queryTypeFileList", payload, client_id, extra)
-            for item in ((data.get("result") or {}).get("details") or []):
-                fid = str(item.get("fid") or "").strip()
-                if fid and fid not in seen and safe_int(item.get("fileSize"), 0) <= 10 * 1024 * 1024:
-                    seen.add(fid)
-                    candidates.append((fid, item.get("fileName") or fid[:12]))
-        if not candidates:
-            self.log("云盘乘风活动: 未找到可用图片，请上传一张清晰单人正脸图片到联通云盘后重试", notify=True)
-        return candidates
-
-    def yphd_task2_acquire(self):
-        return self.yphd_signed_post("/activity/aiRole/task2", "activity:acquire:task2", {}, "1001000165", {
-            "X-YP-Open-Version": "v1.0",
-            "X-CM-SERVICE": getattr(self, "account_mobile", "") or getattr(self, "mobile", ""),
-            "X-PATH": "/h5/wocloud_ai_1/workFlow",
-            "accesstoken": self.cloudDisk.userToken,
-            "Access-Token": self.cloudDisk.userToken,
-            "App-Version": "yp-app/5.5.0",
-            "Client-Id": "1001000165",
-        })
-
-    def yphd_lottery_headers(self):
-        return {
-            "Accept": "application/json, text/plain, */*",
-            "source-type": "woapi",
-            "requestTime": str(int(time.time() * 1000)),
-            "X-Requested-With": "com.chinaunicom.bol.cloudapp",
-            "X-YP-Client-Id": "1001000035",
-            "Referer": f"https://panservice.mail.wo.cn/h5/activitymobile/aiActor/main1?activityId=Mjg%3D&touchpoint=300300010005&token={self.cloudDisk.userToken}",
-        }
-
-    def yphd_mgtv_task(self, ticket, access_token):
-        image_candidates = self.yphd_mgtv_image_candidates()
-        if not image_candidates:
-            return False
-        for image_fid, image_name in image_candidates:
-            self.log(f"云盘乘风活动: 选用图片 {image_name}")
-            payload = {"ticket": ticket, "templateId": YPHD_MGTV_TEMPLATE_ID, "index": 0, "imgUrl": image_fid}
-            data = self.yphd_mgtv_template_submit(payload)
-            for retry in range(3):
-                if data.get("msg") != "权益扣减失败":
-                    break
-                off = self.session.get(f"{YPHD_MGTV_BASE}/api/cu/offlineSubscribe", params={"ticket": ticket}, headers=self.yphd_mgtv_headers(), timeout=20)
-                try:
-                    off_data = off.json()
-                    off_msg = off_data.get("msg") or off_data.get("message") or response_summary(off_data)
-                    success = (off_data.get("data") or {}).get("success")
-                    if success is not None:
-                        off_msg = f"{off_msg} success={success}"
-                except Exception:
-                    off_msg = off.text[:80] or f"HTTP {off.status_code}"
-                self.log(f"云盘乘风活动: 订阅权益 {off_msg}")
-                time.sleep(8 + retry * 6)
-                data = self.yphd_mgtv_template_submit(payload)
-            result = data.get("data") or {}
-            task_id = result.get("taskId") or data.get("taskId")
-            if not task_id:
-                msg = data.get("msg") or response_summary(data)
-                self.log(f"云盘乘风活动: 模板提交失败 {msg}")
-                if "照片" in msg or "人脸" in msg:
-                    continue
-                return False
-            for _ in range(20):
-                result_res = self.session.get(f"{YPHD_MGTV_BASE}/api/cu/video/template/result", params={"taskId": task_id, "ticket": ticket}, headers=self.yphd_mgtv_headers(), timeout=20)
-                try:
-                    result_data = result_res.json()
-                except Exception:
-                    self.log(f"云盘乘风活动: 模板结果 {result_res.text[:120]}")
-                    return False
-                info = result_data.get("data") or {}
-                audit_state = safe_int(info.get("auditState"))
-                algorithm_state = safe_int(info.get("algorithmState"))
-                if result_data.get("errno") == "0" and (audit_state == 2 or audit_state > 1 and algorithm_state > 1):
-                    self.log(f"云盘乘风活动: 模板生成成功 taskId={task_id}")
-                    return True
-                time.sleep(3)
-            self.log(f"云盘乘风活动: 模板仍在生成 taskId={task_id}")
-            return False
-        self.log("云盘乘风活动: 没有可通过识别的图片")
-        return False
-
-    def yphd_mgtv_template_submit(self, payload):
-        res = self.session.post(f"{YPHD_MGTV_BASE}/api/cu/video/template/submit", json=payload, headers=self.yphd_mgtv_headers(), timeout=20)
-        try:
-            return res.json()
-        except Exception:
-            return {"msg": res.text[:120] or f"HTTP {res.status_code}"}
-
-    def yphd_activity_task(self):
-        if not getattr(self.cloudDisk, "userToken", ""):
-            return
-        try:
-            self.yphd_member_claim()
-            self.log("==== 云盘乘风活动 ====")
-            status = self.yphd_signed_post("/activity/fragment/status", "activity:fragment:status", {}, "1001000035")
-            result = status.get("result") or {}
-            self.log(f"云盘乘风活动: 碎片阶段 {result.get('fragmentStep')}")
-            task_info = self.yphd_get("/activity/activity/task/info", {"activityId": YPHD_ACTIVITY_ID}, "1001000035")
-            logs = (task_info.get("result") or {}).get("logs") or []
-            if logs:
-                self.log("云盘乘风活动: 已完成 " + "、".join(x.get("taskName", "") for x in logs if x.get("taskName")))
-            self.yphd_signed_post("/activity/fragment/task/activate", "activity:fragment:activate")
-            self.yphd_move_file()
-            self.yphd_ai_query()
-            task1 = self.yphd_signed_post("/activity/aiRole/task1/acquire", "activity:acquire:task1", {}, "1001000035")
-            self.log(f"云盘乘风活动: task1 {task1.get('meta', {}).get('message') or response_summary(task1)}")
-            status_after = self.yphd_signed_post("/activity/fragment/status", "activity:fragment:status", {}, "1001000035")
-            step_after = safe_int((status_after.get("result") or {}).get("fragmentStep"))
-            self.log(f"云盘乘风活动: task1后碎片阶段 {step_after}")
-            if step_after >= 3:
-                self.log("云盘乘风活动: 已有作品仅作素材，继续今日制作")
-            else:
-                self.log("云盘乘风活动: task2等待作品制作")
-            ticket, access_token = self.yphd_mgtv_login()
-            mgtv_ok = False
-            if ticket:
-                mgtv_ok = self.yphd_mgtv_task(ticket, access_token)
-            if mgtv_ok:
-                status_after = self.yphd_signed_post("/activity/fragment/status", "activity:fragment:status", {}, "1001000035")
-                step_after = safe_int((status_after.get("result") or {}).get("fragmentStep"))
-                self.log(f"云盘乘风活动: 作品后碎片阶段 {step_after}")
-                query = self.yphd_task2_query()
-                self.log(f"云盘乘风活动: 模板后task2确认 {query.get('meta', {}).get('message') or response_summary(query)}")
-                if safe_int(query.get("result")) != 1:
-                    task2 = self.yphd_task2_acquire()
-                    self.log(f"云盘乘风活动: 模板后task2 {task2.get('meta', {}).get('message') or response_summary(task2)}")
-            records = self.yphd_post("/activity/aiRole/userDrawRecords", {"activityId": YPHD_ACTIVITY_ID}, "1001000035")
-            if records.get("result"):
-                self.log(f"云盘乘风活动: 抽奖记录 {len(records.get('result') or [])} 条")
-            times = self.yphd_get("/activity/lottery/lottery-times", {"activityId": YPHD_ACTIVITY_ID}, "1001000035", self.yphd_lottery_headers())
-            if str((times.get("meta") or {}).get("code")) != "200":
-                self.log(f"云盘乘风活动: 抽奖次数查询失败 {response_summary(times)}")
-            times_result = times.get("result") if isinstance(times, dict) else 0
-            if isinstance(times_result, dict):
-                times_result = times_result.get("lotteryTimes") or times_result.get("times") or times_result.get("count") or 0
-            count = int(times_result or 0)
-            self.log(f"云盘乘风活动: 抽奖次数 {count}")
-            for index in range(count):
-                prize = self.yphd_signed_post("/activity/lottery", "activity:lottery", {}, "1001000035", self.yphd_lottery_headers())
-                info = prize.get("result") or {}
-                self.log(f"云盘乘风活动: 第{index + 1}次抽奖 {info.get('prizeName') or response_summary(prize)}", notify=bool(info.get("prizeName")))
-                time.sleep(2)
-            if count:
-                self.yphd_signed_post("/activity/fragment/updateFrontendStatus", "activity:fragment:frontendStatus", {"frontendStatus": 1}, "1001000035")
-        except Exception as e:
-            self.log(f"云盘乘风活动异常: {e}")
-
     def clean_duplicate_files_cloud(self):
         token = getattr(self.cloudDisk, 'userToken', '')
         if not token:
@@ -2714,8 +2263,275 @@ class UserService:
         token = self.get_ltypDispatcher_cloud(ticket)
         if not token:
             return
-        self.yphd_activity_task()
+        if HOMETOWN_ENABLE:
+            self.hometown_task(token)
         self.clean_duplicate_files_cloud()
+
+    # ============ 云盘家乡打卡活动 ============
+    def hometown_aes_encrypt(self, plaintext, key, iv=HOMETOWN_AES_IV):
+        cipher = AES.new(key.encode(), AES.MODE_CBC, iv.encode())
+        return base64.b64encode(cipher.encrypt(pad(plaintext.encode(), AES.block_size, style="pkcs7"))).decode()
+
+    def hometown_headers(self, token, extra=None):
+        headers = {
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) LianTongYunPan/5.1.0 (iPhone; iOS 16.6)",
+            "source-type": "woapi",
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "empty",
+            "clientId": "1001000165",
+            "X-YP-Client-Id": "1001000165",
+            "X-YP-Access-Token": token,
+            "token": token,
+            "X-SH-Access-Token": "",
+            "X-YP-GRAY-FLAG": "undefined",
+            "requestTime": str(int(time.time() * 1000)),
+            "Accept-Language": "zh-CN,zh-Hans;q=0.9",
+        }
+        if extra:
+            headers.update(extra)
+        return headers
+
+    def hometown_sign_payload(self, payload, secret=HOMETOWN_LOTTERY_SECRET):
+        parts = []
+        for k in sorted(payload.keys()):
+            if k == "sign":
+                continue
+            v = payload[k]
+            if v is None:
+                continue
+            trimmed = str(v).strip()
+            if trimmed == "":
+                continue
+            parts.append(f"{k}={trimmed}")
+        raw = "&".join(parts) + f"&secret={secret}"
+        return hmac.new(secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
+
+    def hometown_get_activity_timestamp(self, token, key="activity:lottery"):
+        try:
+            res = self.session.post(
+                "https://panservice.mail.wo.cn/activity/getTimestamp",
+                headers=self.hometown_headers(token),
+                json={"key": key},
+                timeout=15,
+            ).json()
+            if (res.get("meta") or {}).get("code") == "200":
+                return res.get("result") or {}
+            self.log(f"家乡打卡: 获取时间戳失败 {(res.get('meta') or {}).get('message', '未知')}")
+        except Exception as e:
+            self.log(f"家乡打卡: 获取时间戳异常 {e}")
+        return None
+
+    def hometown_query_location(self, token):
+        mobile = self.account_mobile
+        if not token or not mobile:
+            self.log("家乡打卡: 查询归属地失败，Token或手机号为空")
+            return None, None
+        try:
+            encrypted_mobile = self.hometown_aes_encrypt(str(mobile), HOMETOWN_MOBILE_KEY)
+            res = self.session.post(
+                "https://panservice.mail.wo.cn/api-user/user/info/query",
+                headers=self.hometown_headers(token, {"X-SH-Access-Token": ""}),
+                json={"mobile": encrypted_mobile},
+                timeout=15,
+            ).json()
+            if (res.get("meta") or {}).get("code") == "200":
+                result = res.get("result") or {}
+                province_code = result.get("provinceCode", "")
+                province_name = result.get("provinceName", "")
+                if province_code:
+                    self.log(f"家乡打卡: 归属地 {province_name}({province_code})")
+                    return province_code, province_name
+                self.log("家乡打卡: 归属地查询失败，无省份信息")
+            else:
+                self.log(f"家乡打卡: 归属地查询失败 {(res.get('meta') or {}).get('message', '未知')}")
+        except Exception as e:
+            self.log(f"家乡打卡: 查询归属地出错 {e}")
+        return None, None
+
+    def hometown_get_base_ticket(self, token):
+        try:
+            res = self.session.post(
+                "https://panservice.mail.wo.cn/api-user/api/user/ticket",
+                headers=self.hometown_headers(token, {
+                    "accesstoken": token, "access-token": token,
+                    "app-type": "unicom", "X-CM-SERVICE": "PHONE",
+                    "X-YP-Open-Version": "v1.0", "Accept": "*",
+                }),
+                json={},
+                timeout=15,
+            ).json()
+            ticket = (res.get("result") or {}).get("ticket")
+            if not ticket:
+                self.log(f"家乡打卡: 获取云盘基础Ticket失败 {response_summary(res)}")
+            return ticket or ""
+        except Exception as e:
+            self.log(f"家乡打卡: 获取Ticket异常 {e}")
+            return ""
+
+    def hometown_open_activity(self, token, ticket, province_code, province_name):
+        if not token or not province_code or not province_name:
+            self.log("家乡打卡: 开启活动失败，Token或归属地信息不完整")
+            return False
+        mobile = self.account_mobile
+        referer = (
+            f"https://panservice.mail.wo.cn/h5/activitymobile/fileUploadActive?touchpoint=300200030001&type=06"
+            f"&ticket={ticket}&version=iphone_c%4012.0801&timestamp={int(time.time() * 1000)}"
+            f"&desmobile={mobile}&num=0&postage=01addda9786dc7eb5ca0eacd9acd664a"
+            f"&activityId={HOMETOWN_OPEN_ACTIVITY_ID}&clientid=1001000003&userNumber={mobile}"
+        )
+        try:
+            res = self.session.post(
+                "https://panservice.mail.wo.cn/activity/openActivity",
+                headers=self.hometown_headers(token, {"Referer": referer}),
+                json={"activityId": HOMETOWN_LOTTERY_ACTIVITY_ID, "provinceCode": province_code, "provinceName": province_name},
+                timeout=15,
+            ).json()
+            msg = res.get("msg") or (res.get("meta") or {}).get("message") or "开启成功"
+            self.log(f"家乡打卡: 开启结果 {msg}")
+            return True
+        except Exception as e:
+            self.log(f"家乡打卡: 开启活动出错 {e}")
+            return False
+
+    def hometown_ensure_material(self):
+        # 服务端不校验图片内容/大小 (实测 8 字节伪JPEG即返回上传成功),
+        # 故内置一个最小合法 JPEG 字节, 无需任何外部下载或素材文件。
+        if os.path.exists(HOMETOWN_MATERIAL_PATH) and os.path.getsize(HOMETOWN_MATERIAL_PATH) > 8:
+            return True
+        try:
+            with open(HOMETOWN_MATERIAL_PATH, "wb") as f:
+                f.write(HOMETOWN_MATERIAL_BYTES)
+            return True
+        except Exception as e:
+            self.log(f"家乡打卡: 素材写入失败 {e}")
+            return False
+
+    def hometown_upload(self, token):
+        if not self.hometown_ensure_material():
+            self.log("家乡打卡: 上传失败，素材文件不存在且下载失败")
+            return False
+        if not token:
+            self.log("家乡打卡: 上传失败，Token为空")
+            return False
+        try:
+            t_ = str(int(time.time() * 1000))
+            fsize = os.path.getsize(HOMETOWN_MATERIAL_PATH)
+            batch_no = datetime.now().strftime("%Y%m%d%H%M%S")
+            file_info_plain = (
+                '{"spaceType":"0","directoryId":"0","batchNo":"' + batch_no +
+                '","fileName":"8648","fileSize":6376590,"fileType":"1"}'
+            )
+            file_info = self.hometown_aes_encrypt(file_info_plain, token[:16].ljust(16)[:16])
+            rs = "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=6))
+            unique_id = f"{t_}_{rs}"
+            with open(HOMETOWN_MATERIAL_PATH, "rb") as fh:
+                files = {
+                    "uniqueId": (None, unique_id),
+                    "accessToken": (None, token),
+                    "fileName": (None, "8648"),
+                    "psToken": (None, "undefined"),
+                    "fileSize": (None, str(fsize)),
+                    "totalPart": (None, "1"),
+                    "partSize": (None, str(fsize)),
+                    "partIndex": (None, "1"),
+                    "channel": (None, "wocloud"),
+                    "directoryId": (None, "0"),
+                    "fileInfo": (None, file_info),
+                    "file": ("8648", fh, "image/jpeg"),
+                }
+                r = self.session.post(
+                    "https://du.smartont.net:8443/openapi/client/upload2C",
+                    files=files,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+                        "Accept-Encoding": "gzip, deflate, br, zstd",
+                        "origin": "https://pan.wo.cn",
+                        "referer": "https://pan.wo.cn/",
+                        "accept-language": "zh-CN,zh;q=0.9",
+                        "sec-fetch-site": "same-site",
+                        "sec-fetch-mode": "cors",
+                        "sec-fetch-dest": "empty",
+                    },
+                    timeout=60,
+                    verify=False,
+                )
+            self.log(f"家乡打卡: 文件上传 {r.status_code}")
+            return r.status_code == 200
+        except Exception as e:
+            self.log(f"家乡打卡: 文件上传失败 {e}")
+            return False
+
+    def hometown_lottery(self, token):
+        if not token:
+            return
+        ts_info = self.hometown_get_activity_timestamp(token)
+        if not ts_info:
+            self.log("家乡打卡: 抽奖失败，无法获取时间戳")
+            return
+        payload = {
+            "activityId": HOMETOWN_LOTTERY_ACTIVITY_ID,
+            "nonce": ts_info.get("nonce", ""),
+            "timestamp": ts_info.get("timestamp", 0),
+        }
+        payload["sign"] = self.hometown_sign_payload(payload)
+        try:
+            res = self.session.post(
+                "https://panservice.mail.wo.cn/activity/lottery",
+                headers=self.hometown_headers(token),
+                json=payload,
+                timeout=15,
+            ).json()
+            if (res.get("meta") or {}).get("code") == "200":
+                result = res.get("result") or {}
+                prize = result.get("prizeName", "未获取到奖品信息")
+                self.log(f"家乡打卡: 抽奖结果 {prize}", notify=True)
+                times = result.get("lotteryTimes", 0)
+                if times and int(times) > 0:
+                    self.log(f"家乡打卡: 剩余抽奖次数 {times}")
+            else:
+                self.log(f"家乡打卡: 抽奖失败 {(res.get('meta') or {}).get('message', '未知错误')}")
+        except Exception as e:
+            self.log(f"家乡打卡: 抽奖出错 {e}")
+
+    def hometown_cleanup_uploaded(self):
+        # 清除上传到云盘根目录的 8648 垃圾文件, 避免堆积
+        try:
+            matched = []
+            seen = set()
+            for page_num in range(4):
+                data = self.query_all_files_cloud("0", "0", page_num, 500)
+                page_files = data.get("files") or []
+                if not page_files:
+                    break
+                for item in page_files:
+                    fid = item.get("id")
+                    fname = str(item.get("name", "")).strip()
+                    if fid and fid not in seen and fname in ("8648", "kele.jpg"):
+                        seen.add(fid)
+                        matched.append(item)
+                if len(page_files) < 500:
+                    break
+            if matched:
+                self.delete_root_files_cloud(matched, "0")
+                self.log(f"家乡打卡: 已清理上传的垃圾文件 {len(matched)} 个")
+        except Exception as e:
+            self.log(f"家乡打卡: 清理上传文件异常 {e}")
+
+    def hometown_task(self, token):
+        self.log("==== 云盘家乡打卡 ====")
+        province_code, province_name = self.hometown_query_location(token)
+        if not province_code:
+            return
+        ticket = self.hometown_get_base_ticket(token)
+        if not self.hometown_open_activity(token, ticket, province_code, province_name):
+            return
+        self.log("家乡打卡: 开始文件上传...")
+        uploaded = self.hometown_upload(token)
+        time.sleep(5)
+        self.hometown_lottery(token)
+        if uploaded:
+            self.hometown_cleanup_uploaded()
 
     def getTicketByNative_sec(self):
         for attempt in range(1, 4):
@@ -5222,10 +5038,10 @@ class UserService:
         self.log(f"沃云手机: 领取{name}：{res.get('msg', '未知')}", notify=True)
         return res
 
-    def wostore_cloud_activity_login(self, cloud_token, activity_code):
+    def wostore_cloud_activity_login(self, cloud_token, activity_code, login_activity_id=None):
         res = self.wostore_cloud_activity_post(
             "/h5api/activity-service/user/login",
-            {"identityType": "cloudPhoneLogin", "code": cloud_token, "activityId": WOSTORE_CLOUD_LOGIN_ACTIVITY_ID, "device": "device"},
+            {"identityType": "cloudPhoneLogin", "code": cloud_token, "activityId": login_activity_id or WOSTORE_CLOUD_LOGIN_ACTIVITY_ID, "device": "device"},
             "",
             "获取云任务token",
         )
@@ -5429,10 +5245,15 @@ class UserService:
                 points_user_token = user_token
             self.wostore_cloud_points_sign(user_token, WOSTORE_CLOUD_SIGN_CODE)
             self.wostore_cloud_task_list(user_token, activity_code)
-            for lottery_code in WOSTORE_CLOUD_LOTTERY_CODES:
-                for _ in range(self.wostore_cloud_lottery_count(user_token, lottery_code)):
-                    self.wostore_cloud_draw(user_token, lottery_code)
-                    time.sleep(3)
+        # 抽奖: 使用抽奖专用活动码 (先做该活动专属任务, 再查次数抽奖)
+        for lottery_code in WOSTORE_LOTTERY_ACTIVITY_CODES:
+            lottery_token = self.wostore_cloud_activity_login(cloud_token, lottery_code, login_activity_id=lottery_code)
+            if not lottery_token:
+                continue
+            self.wostore_cloud_task_list(lottery_token, lottery_code)
+            for _ in range(self.wostore_cloud_lottery_count(lottery_token, lottery_code)):
+                self.wostore_cloud_draw(lottery_token, lottery_code)
+                time.sleep(3)
         if points_user_token:
             if self.wostore_points_history_has_prize(points_user_token, WOSTORE_POINTS_GOODS_ID_1):
                 self.log("沃云手机: 今日已中奖，跳过积分单抽")
@@ -6913,7 +6734,6 @@ def main():
             ah_status = "开启" if rc.get("run_ah_friday", True) and AH_FRIDAY_AMOUNT else "关闭"
             print(f"  └─ 安徽超级星期五: {ah_status}" + (f" (面额{AH_FRIDAY_AMOUNT}元)" if AH_FRIDAY_AMOUNT else ""))
         if key == "enable_market" and enabled and not query_only and not grab_mode:
-            print(f"  └─ 浇水: {'开启' if mc.get('run_water', True) else '关闭'}")
             print(f"  └─ 做任务: {'开启' if mc.get('run_task', True) else '关闭'}")
             print(f"  └─ 会员中心: {'开启' if mc.get('run_member_center', True) else '关闭'}")
             print(f"  └─ 抽奖: {'开启' if mc.get('run_draw', True) else '关闭'}")
